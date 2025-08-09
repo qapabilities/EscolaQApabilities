@@ -3,12 +3,15 @@ using EscolaQApabilities.StudentService.Application.DTOs;
 using EscolaQApabilities.StudentService.Application.Queries;
 using EscolaQApabilities.StudentService.Domain.Enums;
 using MediatR;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
 
 namespace EscolaQApabilities.StudentService.API.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
+[Authorize(Policy = "TeacherOrAdmin")]
 public class StudentsController : ControllerBase
 {
     private readonly IMediator _mediator;
@@ -19,10 +22,11 @@ public class StudentsController : ControllerBase
     }
 
     /// <summary>
-    /// Lista todos os alunos
+    /// Lista todos os alunos (apenas Admin)
     /// </summary>
     /// <returns>Lista de alunos</returns>
     [HttpGet]
+    [Authorize(Policy = "AdminOnly")]
     [ProducesResponseType(typeof(IEnumerable<StudentDto>), StatusCodes.Status200OK)]
     public async Task<ActionResult<IEnumerable<StudentDto>>> GetAll()
     {
@@ -33,11 +37,12 @@ public class StudentsController : ControllerBase
     }
 
     /// <summary>
-    /// Cria um novo aluno
+    /// Cria um novo aluno (apenas Admin)
     /// </summary>
     /// <param name="createStudentDto">Dados do aluno a ser criado</param>
     /// <returns>Aluno criado</returns>
     [HttpPost]
+    [Authorize(Policy = "AdminOnly")]
     [ProducesResponseType(typeof(StudentDto), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<ActionResult<StudentDto>> Create([FromBody] CreateStudentDto createStudentDto)
@@ -141,11 +146,12 @@ public class StudentsController : ControllerBase
     }
 
     /// <summary>
-    /// Remove um aluno
+    /// Remove um aluno (apenas Admin)
     /// </summary>
     /// <param name="id">ID do aluno</param>
     /// <returns>Confirmação da remoção</returns>
     [HttpDelete("{id:guid}")]
+    [Authorize(Policy = "AdminOnly")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult> Delete(Guid id)
