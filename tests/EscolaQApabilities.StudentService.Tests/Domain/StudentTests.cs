@@ -41,9 +41,9 @@ public class StudentTests
     [Theory]
     [InlineData("", "Email é obrigatório")]
     [InlineData(" ", "Email é obrigatório")]
-    [InlineData("joao", "Email inválido")]
-    [InlineData("joao@", "Email inválido")]
-    [InlineData("@email.com", "Email inválido")]
+    [InlineData("joao", "Email inválido. Formato correto: email@dominio.com")]
+    [InlineData("joao@", "Email inválido. Formato correto: email@dominio.com")]
+    [InlineData("@email.com", "Email inválido. Formato correto: email@dominio.com")]
     [InlineData("joao@email", "Email inválido. Formato correto: email@dominio.com")]
     public void CreateStudent_WithInvalidEmail_ShouldThrowException(string email, string expectedError)
     {

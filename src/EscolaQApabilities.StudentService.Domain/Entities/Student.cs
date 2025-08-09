@@ -5,14 +5,14 @@ namespace EscolaQApabilities.StudentService.Domain.Entities;
 
 public class Student : BaseEntity
 {
-    public string Name { get; private set; }
-    public string Email { get; private set; }
-    public string Phone { get; private set; }
+    public string Name { get; private set; } = string.Empty;
+    public string Email { get; private set; } = string.Empty;
+    public string Phone { get; private set; } = string.Empty;
     public DateTime BirthDate { get; private set; }
-    public string Address { get; private set; }
-    public string City { get; private set; }
-    public string State { get; private set; }
-    public string ZipCode { get; private set; }
+    public string Address { get; private set; } = string.Empty;
+    public string City { get; private set; } = string.Empty;
+    public string State { get; private set; } = string.Empty;
+    public string ZipCode { get; private set; } = string.Empty;
     public StudentStatus Status { get; private set; }
     public DateTime EnrollmentDate { get; private set; }
     public string? ParentName { get; private set; }
@@ -243,7 +243,7 @@ public class Student : BaseEntity
                 return false;
             }
 
-            var tld = domain[(lastDot + 1)..];
+            var tld = domain.Substring(lastDot + 1);
             if (tld.Length < 2)
             {
                 return false;

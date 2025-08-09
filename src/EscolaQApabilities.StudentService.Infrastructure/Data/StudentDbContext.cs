@@ -23,11 +23,13 @@ public class StudentDbContext : DbContext
             
             entity.Property(e => e.Name)
                 .IsRequired()
-                .HasMaxLength(100);
+                .HasMaxLength(100)
+                .UseCollation("SQL_Latin1_General_CP1_CI_AS");
                 
             entity.Property(e => e.Email)
                 .IsRequired()
-                .HasMaxLength(100);
+                .HasMaxLength(100)
+                .UseCollation("SQL_Latin1_General_CP1_CI_AS");
                 
             entity.Property(e => e.Phone)
                 .IsRequired()
@@ -42,11 +44,13 @@ public class StudentDbContext : DbContext
                 
             entity.Property(e => e.City)
                 .IsRequired()
-                .HasMaxLength(100);
+                .HasMaxLength(100)
+                .UseCollation("SQL_Latin1_General_CP1_CI_AS");
                 
             entity.Property(e => e.State)
                 .IsRequired()
-                .HasMaxLength(2);
+                .HasMaxLength(2)
+                .UseCollation("SQL_Latin1_General_CP1_CI_AS");
                 
             entity.Property(e => e.ZipCode)
                 .IsRequired()
@@ -59,13 +63,15 @@ public class StudentDbContext : DbContext
                 .IsRequired();
                 
             entity.Property(e => e.ParentName)
-                .HasMaxLength(100);
+                .HasMaxLength(100)
+                .UseCollation("SQL_Latin1_General_CP1_CI_AS");
                 
             entity.Property(e => e.ParentPhone)
                 .HasMaxLength(15);
                 
             entity.Property(e => e.ParentEmail)
-                .HasMaxLength(100);
+                .HasMaxLength(100)
+                .UseCollation("SQL_Latin1_General_CP1_CI_AS");
                 
             entity.Property(e => e.EmergencyContact)
                 .HasMaxLength(100);

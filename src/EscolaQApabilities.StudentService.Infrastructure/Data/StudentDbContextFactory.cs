@@ -20,7 +20,7 @@ public class StudentDbContextFactory : IDesignTimeDbContextFactory<StudentDbCont
             .Build();
 
         var connectionString = configuration.GetConnectionString("DefaultConnection")
-            ?? "Server=localhost\\SQLEXPRESS;Database=EscolaQApabilitiesStudentService;Trusted_Connection=True;MultipleActiveResultSets=true;Encrypt=True;TrustServerCertificate=False";
+            ?? "Server=localhost\\SQLEXPRESS;Database=EscolaQApabilitiesStudentService;Trusted_Connection=True;MultipleActiveResultSets=true;Encrypt=False;TrustServerCertificate=True";
 
         var optionsBuilder = new DbContextOptionsBuilder<StudentDbContext>();
         optionsBuilder.UseSqlServer(connectionString, sql =>

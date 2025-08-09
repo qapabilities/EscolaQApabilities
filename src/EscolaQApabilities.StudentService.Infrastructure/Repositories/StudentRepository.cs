@@ -26,7 +26,7 @@ public class StudentRepository : IStudentRepository
     {
         return await _context.Students
             .AsNoTracking()
-            .FirstOrDefaultAsync(s => s.Email == email.ToLower());
+            .FirstOrDefaultAsync(s => s.Email == email);
     }
 
     public async Task<IEnumerable<Student>> GetAllAsync()
@@ -48,15 +48,15 @@ public class StudentRepository : IStudentRepository
 
     public async Task<IEnumerable<Student>> SearchAsync(string searchTerm)
     {
-        var term = searchTerm.ToLower();
+        var term = $"%{searchTerm}%";
         
         return await _context.Students
             .AsNoTracking()
-            .Where(s => s.Name.ToLower().Contains(term) ||
-                       s.Email.ToLower().Contains(term) ||
-                       s.City.ToLower().Contains(term) ||
-                       s.State.ToLower().Contains(term) ||
-                       (s.ParentName != null && s.ParentName.ToLower().Contains(term)))
+            .Where(s => EF.Functions.Like(s.Name, term) ||
+                       EF.Functions.Like(s.Email, term) ||
+                       EF.Functions.Like(s.City, term) ||
+                       EF.Functions.Like(s.State, term) ||
+                       (s.ParentName != null && EF.Functions.Like(s.ParentName, term)))
             .OrderBy(s => s.Name)
             .ToListAsync();
     }
@@ -72,7 +72,7 @@ public class StudentRepository : IStudentRepository
     {
         return await _context.Students
             .AsNoTracking()
-            .AnyAsync(s => s.Email == email.ToLower());
+            .AnyAsync(s => s.Email == email);
     }
 
     public async Task<Student> AddAsync(Student student)
@@ -120,12 +120,12 @@ public class StudentRepository : IStudentRepository
 
         if (!string.IsNullOrWhiteSpace(searchTerm))
         {
-            var term = searchTerm.ToLower();
-            query = query.Where(s => s.Name.ToLower().Contains(term)
-                                  || s.Email.ToLower().Contains(term)
-                                  || s.City.ToLower().Contains(term)
-                                  || s.State.ToLower().Contains(term)
-                                  || (s.ParentName != null && s.ParentName.ToLower().Contains(term)));
+            var term = $"%{searchTerm}%";
+            query = query.Where(s => EF.Functions.Like(s.Name, term)
+                                  || EF.Functions.Like(s.Email, term)
+                                  || EF.Functions.Like(s.City, term)
+                                  || EF.Functions.Like(s.State, term)
+                                  || (s.ParentName != null && EF.Functions.Like(s.ParentName, term)));
         }
 
         if (status.HasValue)
