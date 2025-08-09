@@ -39,10 +39,12 @@ public class StudentTests
     }
 
     [Theory]
-    [InlineData("", "Email inválido")]
+    [InlineData("", "Email é obrigatório")]
+    [InlineData(" ", "Email é obrigatório")]
     [InlineData("joao", "Email inválido")]
     [InlineData("joao@", "Email inválido")]
     [InlineData("@email.com", "Email inválido")]
+    [InlineData("joao@email", "Email inválido. Formato correto: email@dominio.com")]
     public void CreateStudent_WithInvalidEmail_ShouldThrowException(string email, string expectedError)
     {
         // Arrange
@@ -56,13 +58,11 @@ public class StudentTests
 
         // Act & Assert
         var action = () => new Student(name, email, phone, birthDate, address, city, state, zipCode);
-        action.Should().Throw<StudentDomainException>().WithMessage("*Email*");
+        action.Should().Throw<StudentDomainException>().WithMessage($"*{expectedError}*");
     }
 
     [Theory]
-    [InlineData("", "Nome é obrigatório")]
-    [InlineData("J", "Nome deve ter entre 2 e 100 caracteres")]
-    [InlineData(new string('A', 101), "Nome deve ter entre 2 e 100 caracteres")]
+    [MemberData(nameof(InvalidNameData))]
     public void CreateStudent_WithInvalidName_ShouldThrowException(string name, string expectedError)
     {
         // Arrange
@@ -76,8 +76,15 @@ public class StudentTests
 
         // Act & Assert
         var action = () => new Student(name, email, phone, birthDate, address, city, state, zipCode);
-        action.Should().Throw<StudentDomainException>().WithMessage("*Nome*");
+        action.Should().Throw<StudentDomainException>().WithMessage($"*{expectedError}*");
     }
+
+    public static IEnumerable<object[]> InvalidNameData => new[]
+    {
+        new object[] { "", "Nome é obrigatório" },
+        new object[] { "J", "Nome deve ter entre 2 e 100 caracteres" },
+        new object[] { new string('A', 101), "Nome deve ter entre 2 e 100 caracteres" }
+    };
 
     [Fact]
     public void CreateStudent_WithFutureBirthDate_ShouldThrowException()

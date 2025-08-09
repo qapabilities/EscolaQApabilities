@@ -179,7 +179,7 @@ public class Student : BaseEntity
             throw new StudentDomainException("Email é obrigatório.");
             
         if (!IsValidEmail(email))
-            throw new StudentDomainException("Email inválido.");
+            throw new StudentDomainException("Email inválido. Formato correto: email@dominio.com");
             
         if (string.IsNullOrWhiteSpace(phone))
             throw new StudentDomainException("Telefone é obrigatório.");
@@ -222,8 +222,34 @@ public class Student : BaseEntity
     {
         try
         {
-            var addr = new System.Net.Mail.MailAddress(email);
-            return addr.Address == email;
+            var normalized = email.Trim();
+            var addr = new System.Net.Mail.MailAddress(normalized);
+            if (addr.Address != normalized)
+            {
+                return false;
+            }
+
+            // Exigir domínio com ponto e TLD com pelo menos 2 caracteres
+            var parts = normalized.Split('@');
+            if (parts.Length != 2)
+            {
+                return false;
+            }
+
+            var domain = parts[1];
+            var lastDot = domain.LastIndexOf('.');
+            if (lastDot <= 0 || lastDot == domain.Length - 1)
+            {
+                return false;
+            }
+
+            var tld = domain[(lastDot + 1)..];
+            if (tld.Length < 2)
+            {
+                return false;
+            }
+
+            return true;
         }
         catch
         {

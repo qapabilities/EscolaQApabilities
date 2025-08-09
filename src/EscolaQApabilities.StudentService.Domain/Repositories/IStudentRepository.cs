@@ -17,4 +17,5 @@ public interface IStudentRepository
     Task DeleteAsync(Guid id);
     Task<int> CountAsync();
     Task<IEnumerable<Student>> GetPagedAsync(int page, int pageSize);
+    Task<(IEnumerable<Student> Students, int TotalCount)> SearchPagedAsync(string? searchTerm, StudentStatus? status, int page, int pageSize);
 } 

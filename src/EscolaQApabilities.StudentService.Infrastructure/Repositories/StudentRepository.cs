@@ -113,4 +113,34 @@ public class StudentRepository : IStudentRepository
             .Take(pageSize)
             .ToListAsync();
     }
+
+    public async Task<(IEnumerable<Student> Students, int TotalCount)> SearchPagedAsync(string? searchTerm, StudentStatus? status, int page, int pageSize)
+    {
+        IQueryable<Student> query = _context.Students.AsNoTracking();
+
+        if (!string.IsNullOrWhiteSpace(searchTerm))
+        {
+            var term = searchTerm.ToLower();
+            query = query.Where(s => s.Name.ToLower().Contains(term)
+                                  || s.Email.ToLower().Contains(term)
+                                  || s.City.ToLower().Contains(term)
+                                  || s.State.ToLower().Contains(term)
+                                  || (s.ParentName != null && s.ParentName.ToLower().Contains(term)));
+        }
+
+        if (status.HasValue)
+        {
+            query = query.Where(s => s.Status == status.Value);
+        }
+
+        var totalCount = await query.CountAsync();
+
+        var students = await query
+            .OrderBy(s => s.Name)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync();
+
+        return (students, totalCount);
+    }
 } 
