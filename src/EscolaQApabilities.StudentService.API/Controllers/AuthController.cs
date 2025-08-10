@@ -1,4 +1,6 @@
 using EscolaQApabilities.StudentService.API.Services;
+using EscolaQApabilities.StudentService.Application.Commands;
+using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
@@ -9,17 +11,17 @@ namespace EscolaQApabilities.StudentService.API.Controllers;
 [Route("api/[controller]")]
 public class AuthController : ControllerBase
 {
-    private readonly IJwtService _jwtService;
+    private readonly IMediator _mediator;
     private readonly ILogger<AuthController> _logger;
 
-    public AuthController(IJwtService jwtService, ILogger<AuthController> logger)
+    public AuthController(IMediator mediator, ILogger<AuthController> logger)
     {
-        _jwtService = jwtService;
+        _mediator = mediator;
         _logger = logger;
     }
 
     /// <summary>
-    /// Endpoint para login (simulado para demonstração)
+    /// Endpoint para login seguro com validação contra banco de dados
     /// </summary>
     /// <param name="loginRequest">Dados de login</param>
     /// <returns>Token JWT</returns>
@@ -27,33 +29,41 @@ public class AuthController : ControllerBase
     [AllowAnonymous]
     [ProducesResponseType(typeof(LoginResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    public ActionResult<LoginResponse> Login([FromBody] LoginRequest loginRequest)
+    [ProducesResponseType(StatusCodes.Status423Locked)]
+    public async Task<ActionResult<LoginResponse>> Login([FromBody] LoginRequest loginRequest)
     {
-        // Simulação de autenticação - em produção, validar contra banco de dados
-        if (IsValidUser(loginRequest.Email, loginRequest.Password))
+        var command = new AuthenticateUserCommand
         {
-            var role = GetUserRole(loginRequest.Email);
-            var userId = Guid.NewGuid().ToString(); // Em produção, pegar do banco
+            Email = loginRequest.Email,
+            Password = loginRequest.Password
+        };
 
-            var token = _jwtService.GenerateToken(userId, loginRequest.Email, role);
+        var result = await _mediator.Send(command);
 
-            _logger.LogInformation("Login successful for user: {Email}", loginRequest.Email);
-
+        if (result.IsSuccess)
+        {
             return Ok(new LoginResponse
             {
-                Token = token,
+                Token = result.Token!,
                 ExpiresIn = 3600, // 1 hora
                 User = new UserInfo
                 {
-                    Id = userId,
-                    Email = loginRequest.Email,
-                    Role = role
+                    Id = result.User!.Id.ToString(),
+                    Email = result.User.Email,
+                    Role = result.User.Role
                 }
             });
         }
 
-        _logger.LogWarning("Failed login attempt for user: {Email}", loginRequest.Email);
-        return Unauthorized(new { Message = "Credenciais inválidas" });
+        if (result.IsLocked)
+        {
+            return StatusCode(StatusCodes.Status423Locked, new { 
+                Message = result.ErrorMessage,
+                LockedUntil = result.LockedUntil
+            });
+        }
+
+        return Unauthorized(new { Message = result.ErrorMessage });
     }
 
     /// <summary>
@@ -78,17 +88,7 @@ public class AuthController : ControllerBase
         });
     }
 
-    private bool IsValidUser(string email, string password)
-    {
-        // Simulação - em produção, validar contra banco de dados
-        return email == "admin@qapabilities.com" && password == "admin123" ||
-               email == "teacher@qapabilities.com" && password == "teacher123";
-    }
 
-    private string GetUserRole(string email)
-    {
-        return email == "admin@qapabilities.com" ? "Admin" : "Teacher";
-    }
 }
 
 public class LoginRequest

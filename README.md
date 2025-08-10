@@ -18,6 +18,7 @@ O projeto segue a Clean Architecture com as seguintes camadas:
 - **SQL Server**
 - **MediatR** (CQRS)
 - **Swagger/OpenAPI**
+- **JWT Authentication**
 - **xUnit** (Testes)
 - **FluentAssertions** (Testes)
 - **Moq** (Testes)
@@ -33,6 +34,14 @@ O projeto segue a Clean Architecture com as seguintes camadas:
 - ✅ Atualização de informações de contato
 - ✅ Gerenciamento de status (Ativo, Inativo, Suspenso)
 - ✅ Remoção de alunos
+
+### Segurança
+- ✅ Autenticação JWT
+- ✅ Autorização baseada em roles (Admin/Teacher)
+- ✅ CORS restritivo
+- ✅ Rate limiting
+- ✅ Headers de segurança
+- ✅ Swagger protegido
 
 ### Validações
 - ✅ Validação de email único
@@ -62,8 +71,21 @@ O projeto segue a Clean Architecture com as seguintes camadas:
    ```
 
 3. **Configura a string de conexão**
+   
+   **Opção 1 - Usando appsettings.json:**
    - Edite o arquivo `src/EscolaQApabilities.StudentService.API/appsettings.json`
    - Ajuste a connection string conforme seu ambiente
+   
+   **Opção 2 - Usando variáveis de ambiente (Recomendado para produção):**
+   ```bash
+   # Windows PowerShell
+   $env:STUDENT_DB_CONNECTION_STRING="Server=localhost\\SQLEXPRESS;Database=EscolaQApabilitiesStudentService;Trusted_Connection=True;MultipleActiveResultSets=true;Encrypt=False;TrustServerCertificate=True"
+   
+   # Linux/macOS
+   export STUDENT_DB_CONNECTION_STRING="Server=localhost\\SQLEXPRESS;Database=EscolaQApabilitiesStudentService;Trusted_Connection=True;MultipleActiveResultSets=true;Encrypt=False;TrustServerCertificate=True"
+   ```
+   
+   📖 **Veja mais detalhes em**: [ENVIRONMENT_VARIABLES.md](ENVIRONMENT_VARIABLES.md)
 
 4. **Executa as migrações do banco de dados**
    ```bash
@@ -79,6 +101,23 @@ O projeto segue a Clean Architecture com as seguintes camadas:
 6. **Acessa a documentação da API**
    - Abra o navegador e acesse: `https://localhost:7001/swagger`
 
+## 🔐 Autenticação
+
+O microsserviço possui autenticação JWT implementada. Para acessar os endpoints protegidos:
+
+### Credenciais de Teste
+- **Admin**: `admin@qapabilities.com` / `admin123`
+- **Teacher**: `teacher@qapabilities.com` / `teacher123`
+
+### Como usar
+1. Faça login via `POST /api/auth/login`
+2. Use o token retornado no header `Authorization: Bearer <token>`
+3. No Swagger, clique em "Authorize" e insira o token
+
+### Endpoints Protegidos
+- **Admin Only**: `GET /api/students`, `POST /api/students`, `DELETE /api/students/{id}`
+- **Teacher/Admin**: `GET /api/students/{id}`, `PUT /api/students/{id}`, `GET /api/students/search`
+
 ## 🧪 Executando os Testes
 
 ```bash
@@ -91,18 +130,25 @@ dotnet test --collect:"XPlat Code Coverage"
 
 ## 📚 Endpoints da API
 
+### Autenticação
+
+| Método | Endpoint | Descrição | Autenticação |
+|--------|----------|-----------|--------------|
+| POST | `/api/auth/login` | Login de usuário | Não |
+| GET | `/api/auth/me` | Informações do usuário atual | Sim |
+
 ### Alunos
 
-| Método | Endpoint | Descrição |
-|--------|----------|-----------|
-| POST | `/api/students` | Cria um novo aluno |
-| GET | `/api/students/{id}` | Busca aluno por ID |
-| GET | `/api/students` | Lista todos os alunos |
-| GET | `/api/students/search` | Busca alunos com filtros |
-| PUT | `/api/students/{id}` | Atualiza dados pessoais |
-| PUT | `/api/students/{id}/contact` | Atualiza informações de contato |
-| PUT | `/api/students/{id}/status` | Atualiza status do aluno |
-| DELETE | `/api/students/{id}` | Remove um aluno |
+| Método | Endpoint | Descrição | Autenticação |
+|--------|----------|-----------|--------------|
+| POST | `/api/students` | Cria um novo aluno | Admin |
+| GET | `/api/students/{id}` | Busca aluno por ID | Teacher/Admin |
+| GET | `/api/students` | Lista todos os alunos | Admin |
+| GET | `/api/students/search` | Busca alunos com filtros | Teacher/Admin |
+| PUT | `/api/students/{id}` | Atualiza dados pessoais | Teacher/Admin |
+| PUT | `/api/students/{id}/contact` | Atualiza informações de contato | Teacher/Admin |
+| PUT | `/api/students/{id}/status` | Atualiza status do aluno | Teacher/Admin |
+| DELETE | `/api/students/{id}` | Remove um aluno | Admin |
 
 ### Exemplo de Criação de Aluno
 
@@ -196,6 +242,12 @@ EscolaQApabilities/
 ## 📄 Licença
 
 Este projeto está sob a licença MIT. Veja o arquivo [LICENSE](LICENSE) para mais detalhes.
+
+## 🔒 Segurança
+
+Para mais detalhes sobre a implementação de segurança, consulte:
+- [SECURITY_IMPLEMENTATION.md](SECURITY_IMPLEMENTATION.md) - Documentação completa da implementação de segurança
+- [ENVIRONMENT_VARIABLES.md](ENVIRONMENT_VARIABLES.md) - Configuração de variáveis de ambiente
 
 ## 👨‍💻 Autor
 

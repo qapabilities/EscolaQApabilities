@@ -1,0 +1,17 @@
+{
+  "name": "Pedro Santos",
+  "email": "pedro.santos.full@email.com",
+  "phone": "(31) 91234-5678",
+  "birthDate": "2004-11-08",
+  "address": "Rua do Comércio, 789",
+  "city": "Belo Horizonte",
+  "state": "MG",
+  "zipCode": "30112-000",
+  "parentName": "Maria Santos",
+  "parentPhone": "(31) 98765-4321",
+  "parentEmail": "maria.santos@email.com",
+  "emergencyContact": "João Santos",
+  "emergencyPhone": "(31) 99999-8888",
+  "medicalInformation": "Alérgico a amendoim",
+  "notes": "Aluno dedicado e pontual"
+}

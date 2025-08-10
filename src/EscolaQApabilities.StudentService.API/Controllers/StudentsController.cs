@@ -22,21 +22,6 @@ public class StudentsController : ControllerBase
     }
 
     /// <summary>
-    /// Lista todos os alunos (apenas Admin)
-    /// </summary>
-    /// <returns>Lista de alunos</returns>
-    [HttpGet]
-    [Authorize(Policy = "AdminOnly")]
-    [ProducesResponseType(typeof(IEnumerable<StudentDto>), StatusCodes.Status200OK)]
-    public async Task<ActionResult<IEnumerable<StudentDto>>> GetAll()
-    {
-        var query = new GetAllStudentsQuery();
-        var result = await _mediator.Send(query);
-        
-        return Ok(result);
-    }
-
-    /// <summary>
     /// Cria um novo aluno (apenas Admin)
     /// </summary>
     /// <param name="createStudentDto">Dados do aluno a ser criado</param>
@@ -51,6 +36,21 @@ public class StudentsController : ControllerBase
         var result = await _mediator.Send(command);
         
         return CreatedAtAction(nameof(GetById), new { id = result.Id }, result);
+    }
+
+    /// <summary>
+    /// Lista todos os alunos (apenas Admin)
+    /// </summary>
+    /// <returns>Lista de alunos</returns>
+    [HttpGet("all")]
+    [Authorize(Policy = "AdminOnly")]
+    [ProducesResponseType(typeof(IEnumerable<StudentDto>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<IEnumerable<StudentDto>>> GetAll()
+    {
+        var query = new GetAllStudentsQuery();
+        var result = await _mediator.Send(query);
+        
+        return Ok(result);
     }
 
     /// <summary>

@@ -1,5 +1,6 @@
 using EscolaQApabilities.StudentService.Domain.Enums;
 using EscolaQApabilities.StudentService.Domain.Exceptions;
+using System.Linq;
 
 namespace EscolaQApabilities.StudentService.Domain.Entities;
 
@@ -214,8 +215,10 @@ public class Student : BaseEntity
         if (string.IsNullOrWhiteSpace(zipCode))
             throw new StudentDomainException("CEP é obrigatório.");
             
-        if (zipCode.Length != 8)
-            throw new StudentDomainException("CEP deve ter 8 dígitos.");
+        // Remove hífen do CEP se presente e valida se tem 8 dígitos
+        var cleanZipCode = zipCode.Replace("-", "");
+        if (cleanZipCode.Length != 8 || !cleanZipCode.All(char.IsDigit))
+            throw new StudentDomainException("CEP deve ter 8 dígitos. Formato aceito: 12345678 ou 12345-678.");
     }
 
     private static bool IsValidEmail(string email)

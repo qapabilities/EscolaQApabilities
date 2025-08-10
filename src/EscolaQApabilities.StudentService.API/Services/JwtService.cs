@@ -2,27 +2,27 @@ using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
+using EscolaQApabilities.StudentService.API.Configuration;
+using EscolaQApabilities.StudentService.Application.Services;
 
 namespace EscolaQApabilities.StudentService.API.Services;
 
-public interface IJwtService
-{
-    string GenerateToken(string userId, string email, string role);
-    ClaimsPrincipal? ValidateToken(string token);
-}
-
 public class JwtService : IJwtService
 {
-    private readonly IConfiguration _configuration;
+    private readonly JwtConfiguration _jwtConfig;
+    private readonly ILogger<JwtService> _logger;
 
-    public JwtService(IConfiguration configuration)
+    public JwtService(JwtConfiguration jwtConfig, ILogger<JwtService> logger)
     {
-        _configuration = configuration;
+        _jwtConfig = jwtConfig;
+        _logger = logger;
+        _jwtConfig.Validate();
+        _logger.LogInformation("JWT configuration validated successfully");
     }
 
     public string GenerateToken(string userId, string email, string role)
     {
-        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_configuration["Jwt:Key"]!));
+        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_jwtConfig.Key));
         var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
         var claims = new[]
@@ -35,20 +35,27 @@ public class JwtService : IJwtService
         };
 
         var token = new JwtSecurityToken(
-            issuer: _configuration["Jwt:Issuer"],
-            audience: _configuration["Jwt:Audience"],
+            issuer: _jwtConfig.Issuer,
+            audience: _jwtConfig.Audience,
             claims: claims,
-            expires: DateTime.UtcNow.AddMinutes(Convert.ToDouble(_configuration["Jwt:ExpiryInMinutes"])),
+            expires: DateTime.UtcNow.AddMinutes(_jwtConfig.ExpiryInMinutes),
             signingCredentials: credentials
         );
 
+        _logger.LogDebug("Generated JWT token for user {UserId} with role {Role}", userId, role);
         return new JwtSecurityTokenHandler().WriteToken(token);
     }
 
     public ClaimsPrincipal? ValidateToken(string token)
     {
+        if (string.IsNullOrWhiteSpace(token))
+        {
+            _logger.LogWarning("Attempted to validate null or empty token");
+            return null;
+        }
+
         var tokenHandler = new JwtSecurityTokenHandler();
-        var key = Encoding.UTF8.GetBytes(_configuration["Jwt:Key"]!);
+        var key = Encoding.UTF8.GetBytes(_jwtConfig.Key);
 
         try
         {
@@ -57,17 +64,19 @@ public class JwtService : IJwtService
                 ValidateIssuerSigningKey = true,
                 IssuerSigningKey = new SymmetricSecurityKey(key),
                 ValidateIssuer = true,
-                ValidIssuer = _configuration["Jwt:Issuer"],
+                ValidIssuer = _jwtConfig.Issuer,
                 ValidateAudience = true,
-                ValidAudience = _configuration["Jwt:Audience"],
+                ValidAudience = _jwtConfig.Audience,
                 ValidateLifetime = true,
                 ClockSkew = TimeSpan.Zero
             }, out SecurityToken validatedToken);
 
+            _logger.LogDebug("Token validated successfully");
             return principal;
         }
-        catch
+        catch (Exception ex)
         {
+            _logger.LogWarning(ex, "Token validation failed");
             return null;
         }
     }
