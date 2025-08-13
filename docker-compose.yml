@@ -1,0 +1,49 @@
+services:
+  # Student Service API
+  student-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: escola-student-service
+    environment:
+      # Database Configuration - SQLite em arquivo para teste
+      STUDENT_DB_CONNECTION_STRING: "Data Source=/tmp/escola.db"
+      USE_SQLITE: "true"
+      
+      # JWT Configuration
+      JWT_KEY: "escola-qapabilities-super-secret-jwt-key-for-development-only-32-chars-minimum"
+      JWT_ISSUER: "EscolaQApabilities"
+      JWT_AUDIENCE: "EscolaQApabilitiesAPI"
+      JWT_EXPIRY_MINUTES: "60"
+      
+      # Security Configuration
+      SECURITY_CORS_ORIGINS: "http://localhost:3000,http://localhost:4200"
+      SECURITY_RATE_LIMIT_REQUESTS: "100"
+      SECURITY_RATE_LIMIT_WINDOW_MINUTES: "1"
+      
+      # Database Collation
+      DATABASE_COLLATION: "SQL_Latin1_General_CP1_CI_AS"
+      
+      # Application Settings
+      ASPNETCORE_ENVIRONMENT: "Development"
+      ASPNETCORE_URLS: "http://+:8080"
+    ports:
+      - "8080:8080"
+
+    networks:
+      - escola-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
+
+networks:
+  escola-network:
+    driver: bridge
+
+volumes:
+  sqlserver_data:
+    driver: local

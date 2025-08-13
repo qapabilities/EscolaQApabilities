@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: escola-qapabilities
+  labels:
+    name: escola-qapabilities
+    environment: production
+    app.kubernetes.io/name: escola-qapabilities
+    app.kubernetes.io/component: namespace
+

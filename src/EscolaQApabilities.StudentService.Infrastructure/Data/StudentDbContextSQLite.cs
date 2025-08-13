@@ -3,9 +3,9 @@ using Microsoft.EntityFrameworkCore;
 
 namespace EscolaQApabilities.StudentService.Infrastructure.Data;
 
-public class StudentDbContext : DbContext
+public class StudentDbContextSQLite : DbContext
 {
-    public StudentDbContext(DbContextOptions<StudentDbContext> options) : base(options)
+    public StudentDbContextSQLite(DbContextOptions<StudentDbContext> options) : base(options)
     {
     }
 
@@ -71,3 +71,4 @@ public class StudentDbContext : DbContext
         });
     }
 }
+

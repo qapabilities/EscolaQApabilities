@@ -1,0 +1,227 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: escola-qapabilities
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: student-service-config
+  namespace: escola-qapabilities
+data:
+  ASPNETCORE_ENVIRONMENT: "Production"
+  ASPNETCORE_URLS: "http://+:8080"
+  USE_SQLITE: "true"
+  JWT_ISSUER: "EscolaQApabilities"
+  JWT_AUDIENCE: "EscolaQApabilitiesAPI"
+  JWT_EXPIRY_MINUTES: "60"
+  SECURITY_CORS_ORIGINS: "*"
+  SECURITY_RATE_LIMIT_REQUESTS: "100"
+  SECURITY_RATE_LIMIT_WINDOW_MINUTES: "1"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: student-service-secret
+  namespace: escola-qapabilities
+type: Opaque
+stringData:
+  STUDENT_DB_CONNECTION_STRING: "Data Source=/tmp/escola.db"
+  JWT_KEY: "escola-qapabilities-super-secret-jwt-key-for-production-32-chars-minimum-key"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: student-service
+  namespace: escola-qapabilities
+  labels:
+    app: student-service
+    version: v1
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: student-service
+  template:
+    metadata:
+      labels:
+        app: student-service
+        version: v1
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/health"
+    spec:
+      containers:
+      - name: student-service
+        image: escolaaksregistry.azurecr.io/student-service:latest
+        imagePullPolicy: Always
+        ports:
+        - name: http
+          containerPort: 8080
+          protocol: TCP
+        env:
+        - name: ASPNETCORE_ENVIRONMENT
+          valueFrom:
+            configMapKeyRef:
+              name: student-service-config
+              key: ASPNETCORE_ENVIRONMENT
+        - name: ASPNETCORE_URLS
+          valueFrom:
+            configMapKeyRef:
+              name: student-service-config
+              key: ASPNETCORE_URLS
+        - name: USE_SQLITE
+          valueFrom:
+            configMapKeyRef:
+              name: student-service-config
+              key: USE_SQLITE
+        - name: STUDENT_DB_CONNECTION_STRING
+          valueFrom:
+            secretKeyRef:
+              name: student-service-secret
+              key: STUDENT_DB_CONNECTION_STRING
+        - name: JWT_KEY
+          valueFrom:
+            secretKeyRef:
+              name: student-service-secret
+              key: JWT_KEY
+        - name: JWT_ISSUER
+          valueFrom:
+            configMapKeyRef:
+              name: student-service-config
+              key: JWT_ISSUER
+        - name: JWT_AUDIENCE
+          valueFrom:
+            configMapKeyRef:
+              name: student-service-config
+              key: JWT_AUDIENCE
+        - name: JWT_EXPIRY_MINUTES
+          valueFrom:
+            configMapKeyRef:
+              name: student-service-config
+              key: JWT_EXPIRY_MINUTES
+        - name: SECURITY_CORS_ORIGINS
+          valueFrom:
+            configMapKeyRef:
+              name: student-service-config
+              key: SECURITY_CORS_ORIGINS
+        - name: SECURITY_RATE_LIMIT_REQUESTS
+          valueFrom:
+            configMapKeyRef:
+              name: student-service-config
+              key: SECURITY_RATE_LIMIT_REQUESTS
+        - name: SECURITY_RATE_LIMIT_WINDOW_MINUTES
+          valueFrom:
+            configMapKeyRef:
+              name: student-service-config
+              key: SECURITY_RATE_LIMIT_WINDOW_MINUTES
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+            scheme: HTTP
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+            scheme: HTTP
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        startupProbe:
+          httpGet:
+            path: /health
+            port: 8080
+            scheme: HTTP
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 30
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: student-service
+  namespace: escola-qapabilities
+  labels:
+    app: student-service
+spec:
+  type: ClusterIP
+  ports:
+  - name: http
+    port: 80
+    targetPort: 8080
+    protocol: TCP
+  selector:
+    app: student-service
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: student-service-ingress
+  namespace: escola-qapabilities
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/cors-allow-origin: "*"
+    nginx.ingress.kubernetes.io/cors-allow-methods: "PUT, GET, POST, DELETE, PATCH, OPTIONS"
+    nginx.ingress.kubernetes.io/cors-allow-headers: "DNT,X-CustomHeader,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Authorization"
+    nginx.ingress.kubernetes.io/enable-cors: "true"
+spec:
+  rules:
+  - http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: student-service
+            port:
+              number: 80
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: student-service-hpa
+  namespace: escola-qapabilities
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: student-service
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+

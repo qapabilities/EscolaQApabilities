@@ -12,11 +12,15 @@ using Microsoft.Extensions.Options;
 using System.Text;
 using System.Reflection;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 builder.Services.AddControllers();
+
+// Add health checks
+builder.Services.AddHealthChecks();
 
 // Configurar rotas em lowercase
 builder.Services.Configure<RouteOptions>(options =>
@@ -177,7 +181,74 @@ app.UseRateLimiter();
 // Configurar tratamento de exceções
 app.UseExceptionHandler("/error");
 
+// Configure health checks endpoint
+app.MapHealthChecks("/health");
+
 app.MapControllers();
+
+// Executar migrations automaticamente
+using (var scope = app.Services.CreateScope())
+{
+    var dbContext = scope.ServiceProvider.GetRequiredService<EscolaQApabilities.StudentService.Infrastructure.Data.StudentDbContext>();
+    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+    
+    try
+    {
+        logger.LogInformation("Applying database migrations...");
+        await dbContext.Database.MigrateAsync();
+        logger.LogInformation("Database migrations applied successfully");
+        
+        // Garantir que as tabelas existem criando-as via SQL direto
+        logger.LogInformation("Creating tables manually...");
+        await dbContext.Database.ExecuteSqlRawAsync(@"
+            CREATE TABLE IF NOT EXISTS ""Users"" (
+                ""Id"" TEXT NOT NULL,
+                ""Email"" TEXT NOT NULL,
+                ""PasswordHash"" TEXT NOT NULL,
+                ""Role"" TEXT NOT NULL,
+                ""Name"" TEXT NOT NULL,
+                ""IsActive"" INTEGER NOT NULL,
+                ""CreatedAt"" TEXT NOT NULL,
+                ""LastLoginAt"" TEXT NULL,
+                ""LoginAttempts"" INTEGER NOT NULL,
+                ""LockedUntil"" TEXT NULL,
+                CONSTRAINT ""PK_Users"" PRIMARY KEY (""Id"")
+            );
+            
+            CREATE TABLE IF NOT EXISTS ""Students"" (
+                ""Id"" TEXT NOT NULL,
+                ""Name"" TEXT NOT NULL,
+                ""Email"" TEXT NOT NULL,
+                ""BirthDate"" TEXT NOT NULL,
+                ""Phone"" TEXT NOT NULL,
+                ""Address"" TEXT NOT NULL,
+                ""City"" TEXT NOT NULL,
+                ""State"" TEXT NOT NULL,
+                ""ZipCode"" TEXT NOT NULL,
+                ""Status"" INTEGER NOT NULL,
+                ""EnrollmentDate"" TEXT NOT NULL,
+                ""ParentName"" TEXT NULL,
+                ""ParentPhone"" TEXT NULL,
+                ""ParentEmail"" TEXT NULL,
+                ""EmergencyContact"" TEXT NULL,
+                ""EmergencyPhone"" TEXT NULL,
+                ""MedicalInformation"" TEXT NULL,
+                ""Notes"" TEXT NULL,
+                ""CreatedAt"" TEXT NOT NULL,
+                ""UpdatedAt"" TEXT NOT NULL,
+                CONSTRAINT ""PK_Students"" PRIMARY KEY (""Id"")
+            );
+            
+            CREATE UNIQUE INDEX IF NOT EXISTS ""IX_Users_Email"" ON ""Users"" (""Email"");
+            CREATE UNIQUE INDEX IF NOT EXISTS ""IX_Students_Email"" ON ""Students"" (""Email"");
+        ");
+        logger.LogInformation("Tables created successfully");
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Error applying database migrations");
+    }
+}
 
 // Inicializar usuários padrão
 using (var scope = app.Services.CreateScope())
