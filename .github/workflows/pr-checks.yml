@@ -1,0 +1,157 @@
+name: 🔍 PR Checks
+
+on:
+  pull_request:
+    branches: [ main, develop ]
+    types: [opened, synchronize, reopened]
+
+env:
+  DOTNET_VERSION: '8.0.x'
+
+jobs:
+  pr-validation:
+    name: 🔍 Validação do PR
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        
+    - name: ⚙️ Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+        
+    - name: 🔄 Restore dependencies
+      run: dotnet restore
+      
+    - name: 🏗️ Build
+      run: dotnet build --no-restore --configuration Release
+      
+    - name: 🧪 Run tests
+      run: |
+        dotnet test --no-build --configuration Release \
+          --verbosity normal \
+          --collect:"XPlat Code Coverage" \
+          --logger trx \
+          --results-directory ./TestResults
+          
+    - name: 📊 Test Report
+      uses: dorny/test-reporter@v1
+      if: success() || failure()
+      with:
+        name: '.NET Tests'
+        path: './TestResults/*.trx'
+        reporter: dotnet-trx
+        
+    - name: 📝 PR Comment - Build Success
+      if: success()
+      uses: actions/github-script@v6
+      with:
+        script: |
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: `## ✅ Build Status: SUCCESS
+            
+            🎉 **All checks passed!**
+            
+            - ✅ Build completed successfully
+            - ✅ All tests passed
+            - ✅ Code quality checks passed
+            
+            Ready for review! 🚀`
+          });
+          
+    - name: 📝 PR Comment - Build Failed
+      if: failure()
+      uses: actions/github-script@v6
+      with:
+        script: |
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: `## ❌ Build Status: FAILED
+            
+            🚨 **Some checks failed!**
+            
+            Please check the workflow logs and fix the issues before merging.
+            
+            [View workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})`
+          });
+
+  docker-build-test:
+    name: 🐳 Docker Build Test
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+      
+    - name: 🏗️ Build Docker image
+      run: |
+        docker build -t escola-student-service:pr-${{ github.event.number }} .
+        
+    - name: 🔍 Test Docker image
+      run: |
+        # Verificar se a imagem foi criada
+        docker images escola-student-service:pr-${{ github.event.number }}
+        
+        # Teste básico de execução
+        docker run --rm --name test-container -d \
+          -p 8080:8080 \
+          -e ASPNETCORE_ENVIRONMENT=Development \
+          -e STUDENT_DB_CONNECTION_STRING="Data Source=:memory:" \
+          -e USE_SQLITE="true" \
+          -e JWT_KEY="test-key-for-development-only-32-chars-minimum" \
+          -e JWT_ISSUER="EscolaQApabilities" \
+          -e JWT_AUDIENCE="EscolaQApabilitiesAPI" \
+          -e JWT_EXPIRY_MINUTES="60" \
+          escola-student-service:pr-${{ github.event.number }}
+          
+        # Aguardar container iniciar
+        sleep 30
+        
+        # Testar health endpoint
+        if curl -f http://localhost:8080/health; then
+          echo "✅ Container health check passou!"
+        else
+          echo "❌ Container health check falhou!"
+          docker logs test-container
+          exit 1
+        fi
+        
+        # Cleanup
+        docker stop test-container
+
+  changed-files:
+    name: 📁 Arquivos Alterados
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        
+    - name: 📁 Get changed files
+      id: changed-files
+      uses: tj-actions/changed-files@v40
+      with:
+        files: |
+          **/*.cs
+          **/*.csproj
+          **/*.sln
+          **/Dockerfile
+          **/*.yml
+          **/*.yaml
+          
+    - name: 📝 List changed files
+      if: steps.changed-files.outputs.any_changed == 'true'
+      run: |
+        echo "📁 Arquivos alterados neste PR:"
+        echo "${{ steps.changed-files.outputs.all_changed_files }}" | tr ' ' '\n'

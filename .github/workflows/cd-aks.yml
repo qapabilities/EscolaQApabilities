@@ -1,0 +1,239 @@
+name: 🚀 CD - Deploy para AKS
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Ambiente para deploy'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+        - production
+        - staging
+
+env:
+  REGISTRY_NAME: escolaaksregistry
+  CLUSTER_NAME: escola-aks
+  RESOURCE_GROUP: escola-qapabilities-rg
+  NAMESPACE: escola-qapabilities
+  APP_NAME: student-service
+  IMAGE_TAG: ${{ github.sha }}
+
+jobs:
+  build-and-push:
+    name: 🏗️ Build & Push Docker Image
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+      
+    - name: 🔐 Login to Azure
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+        
+    - name: 🔐 Login to Azure Container Registry
+      run: |
+        az acr login --name ${{ env.REGISTRY_NAME }}
+        
+    - name: 🏗️ Build and push Docker image
+      run: |
+        # Build da imagem
+        docker build -t ${{ env.REGISTRY_NAME }}.azurecr.io/${{ env.APP_NAME }}:${{ env.IMAGE_TAG }} .
+        docker build -t ${{ env.REGISTRY_NAME }}.azurecr.io/${{ env.APP_NAME }}:latest .
+        
+        # Push das imagens
+        docker push ${{ env.REGISTRY_NAME }}.azurecr.io/${{ env.APP_NAME }}:${{ env.IMAGE_TAG }}
+        docker push ${{ env.REGISTRY_NAME }}.azurecr.io/${{ env.APP_NAME }}:latest
+        
+    - name: 📊 Scan Docker image for vulnerabilities
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: ${{ env.REGISTRY_NAME }}.azurecr.io/${{ env.APP_NAME }}:${{ env.IMAGE_TAG }}
+        format: 'sarif'
+        output: 'trivy-image-results.sarif'
+        
+    - name: 📤 Upload image scan results
+      uses: github/codeql-action/upload-sarif@v2
+      if: always()
+      with:
+        sarif_file: 'trivy-image-results.sarif'
+
+  deploy-to-aks:
+    name: 🚀 Deploy to AKS
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    environment: 
+      name: ${{ github.event.inputs.environment || 'production' }}
+      url: https://escola-aks.brazilsouth.cloudapp.azure.com
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+      
+    - name: 🔐 Login to Azure
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+        
+    - name: ⚙️ Setup kubectl
+      uses: azure/setup-kubectl@v3
+      with:
+        version: 'latest'
+        
+    - name: 🔗 Get AKS credentials
+      run: |
+        az aks get-credentials \
+          --resource-group ${{ env.RESOURCE_GROUP }} \
+          --name ${{ env.CLUSTER_NAME }} \
+          --overwrite-existing
+          
+    - name: 📝 Update Kubernetes manifests
+      run: |
+        # Atualizar a imagem no manifest
+        sed -i "s|image: .*|image: ${{ env.REGISTRY_NAME }}.azurecr.io/${{ env.APP_NAME }}:${{ env.IMAGE_TAG }}|g" deploy-k8s.yaml
+        
+        # Adicionar labels para rastreamento
+        sed -i "/metadata:/a\\  labels:\\n    app.kubernetes.io/version: \"${{ env.IMAGE_TAG }}\"\\n    github.com/sha: \"${{ github.sha }}\"\\n    github.com/run-id: \"${{ github.run_id }}\"" deploy-k8s.yaml
+        
+    - name: 🚀 Deploy to Kubernetes
+      run: |
+        # Aplicar os manifestos
+        kubectl apply -f deploy-k8s.yaml
+        
+        # Aguardar o rollout
+        kubectl rollout status deployment/${{ env.APP_NAME }} -n ${{ env.NAMESPACE }} --timeout=600s
+        
+    - name: ✅ Verify deployment
+      run: |
+        # Verificar pods
+        kubectl get pods -n ${{ env.NAMESPACE }} -l app=${{ env.APP_NAME }}
+        
+        # Verificar services
+        kubectl get services -n ${{ env.NAMESPACE }}
+        
+        # Verificar ingress
+        kubectl get ingress -n ${{ env.NAMESPACE }}
+
+  health-check:
+    name: 🏥 Health Check
+    runs-on: ubuntu-latest
+    needs: deploy-to-aks
+    
+    steps:
+    - name: 🔐 Login to Azure
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+        
+    - name: ⚙️ Setup kubectl
+      uses: azure/setup-kubectl@v3
+      with:
+        version: 'latest'
+        
+    - name: 🔗 Get AKS credentials
+      run: |
+        az aks get-credentials \
+          --resource-group ${{ env.RESOURCE_GROUP }} \
+          --name ${{ env.CLUSTER_NAME }} \
+          --overwrite-existing
+          
+    - name: 🏥 Wait for application to be ready
+      run: |
+        echo "⏳ Aguardando aplicação ficar pronta..."
+        kubectl wait --for=condition=ready pod -l app=${{ env.APP_NAME }} -n ${{ env.NAMESPACE }} --timeout=300s
+        
+    - name: 🔍 Test health endpoint
+      run: |
+        # Port-forward para testar localmente
+        kubectl port-forward service/${{ env.APP_NAME }} 8080:80 -n ${{ env.NAMESPACE }} &
+        PF_PID=$!
+        
+        # Aguardar port-forward estar pronto
+        sleep 10
+        
+        # Testar health check
+        for i in {1..30}; do
+          if curl -f http://localhost:8080/health; then
+            echo "✅ Health check passou!"
+            kill $PF_PID
+            exit 0
+          fi
+          echo "⏳ Tentativa $i/30 - aguardando..."
+          sleep 10
+        done
+        
+        echo "❌ Health check falhou após 5 minutos"
+        kill $PF_PID
+        exit 1
+        
+    - name: 🧪 Test API endpoints
+      run: |
+        # Port-forward para testar APIs
+        kubectl port-forward service/${{ env.APP_NAME }} 8080:80 -n ${{ env.NAMESPACE }} &
+        PF_PID=$!
+        
+        # Aguardar port-forward estar pronto
+        sleep 10
+        
+        # Testar swagger
+        if curl -f http://localhost:8080/swagger/index.html; then
+          echo "✅ Swagger está acessível!"
+        else
+          echo "❌ Swagger não está acessível"
+          kill $PF_PID
+          exit 1
+        fi
+        
+        # Cleanup
+        kill $PF_PID
+
+  rollback-on-failure:
+    name: 🔄 Rollback on Failure
+    runs-on: ubuntu-latest
+    needs: [deploy-to-aks, health-check]
+    if: failure()
+    
+    steps:
+    - name: 🔐 Login to Azure
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+        
+    - name: ⚙️ Setup kubectl
+      uses: azure/setup-kubectl@v3
+      with:
+        version: 'latest'
+        
+    - name: 🔗 Get AKS credentials
+      run: |
+        az aks get-credentials \
+          --resource-group ${{ env.RESOURCE_GROUP }} \
+          --name ${{ env.CLUSTER_NAME }} \
+          --overwrite-existing
+          
+    - name: 🔄 Rollback deployment
+      run: |
+        echo "❌ Deploy falhou, iniciando rollback..."
+        kubectl rollout undo deployment/${{ env.APP_NAME }} -n ${{ env.NAMESPACE }}
+        kubectl rollout status deployment/${{ env.APP_NAME }} -n ${{ env.NAMESPACE }} --timeout=300s
+        echo "✅ Rollback concluído"
+
+  notify-success:
+    name: 📢 Notificar Sucesso
+    runs-on: ubuntu-latest
+    needs: [health-check]
+    if: success()
+    
+    steps:
+    - name: 🎉 Deploy Success Notification
+      run: |
+        echo "🎉 Deploy realizado com sucesso!"
+        echo "📦 Imagem: ${{ env.REGISTRY_NAME }}.azurecr.io/${{ env.APP_NAME }}:${{ env.IMAGE_TAG }}"
+        echo "🏷️ SHA: ${{ github.sha }}"
+        echo "🔗 Run: ${{ github.run_id }}"
+        echo "🌐 URL: https://escola-aks.brazilsouth.cloudapp.azure.com"
