@@ -79,8 +79,9 @@ jobs:
     # Build e Push da imagem Docker
     - name: 🏗️ Build & Push Docker Image
       run: |
-        # Build da imagem
+        # Build da imagem com plataforma específica
         docker build \
+          --platform linux/amd64 \
           --tag ${{ steps.meta.outputs.tags }} \
           --tag ${{ steps.meta.outputs.latest }} \
           --build-arg BUILD_VERSION=${{ steps.meta.outputs.version }} \
@@ -153,10 +154,10 @@ jobs:
     # Aguardar deployment estar pronto
     - name: ⏳ Wait for Deployment
       run: |
-        echo "⏳ Aguardando deployment estar pronto..."
+        echo "⏳ Aguardando deployment estar pronto (pode levar alguns minutos)..."
         kubectl rollout status deployment/${{ env.DEPLOYMENT_NAME }} \
           -n ${{ env.NAMESPACE }} \
-          --timeout=600s
+          --timeout=900s
           
         echo "✅ Deployment concluído com sucesso!"
         
@@ -343,7 +344,7 @@ jobs:
           # Aguardar rollback completar
           kubectl rollout status deployment/${{ env.DEPLOYMENT_NAME }} \
             -n ${{ env.NAMESPACE }} \
-            --timeout=300s
+            --timeout=600s
             
           echo "🔄 Rollback concluído!"
         else
