@@ -7,6 +7,9 @@ metadata:
     app.kubernetes.io/name: student-service
     app.kubernetes.io/component: configmap
 data:
+  # Database Configuration - SQLite
+  USE_SQLITE: "true"
+  
   # JWT Configuration
   JWT_ISSUER: "EscolaQApabilities"
   JWT_AUDIENCE: "EscolaQApabilitiesAPI"

@@ -54,7 +54,7 @@ spec:
     spec:
       containers:
       - name: sql-server
-        image: mcr.microsoft.com/mssql/server:2022-latest
+        image: mcr.microsoft.com/mssql/server:2019-latest
         ports:
         - containerPort: 1433
           name: mssql
@@ -63,6 +63,8 @@ spec:
           value: "Y"
         - name: MSSQL_PID
           value: "Express"
+        - name: MSSQL_MEMORY_LIMIT_MB
+          value: "1024"
         - name: SA_PASSWORD
           valueFrom:
             secretKeyRef:
@@ -73,23 +75,25 @@ spec:
           mountPath: /var/opt/mssql
         resources:
           requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
             memory: "1Gi"
             cpu: "500m"
-          limits:
-            memory: "2Gi"
-            cpu: "1000m"
         livenessProbe:
           tcpSocket:
             port: 1433
-          initialDelaySeconds: 60
+          initialDelaySeconds: 90
           periodSeconds: 30
           timeoutSeconds: 10
+          failureThreshold: 6
         readinessProbe:
           tcpSocket:
             port: 1433
-          initialDelaySeconds: 30
+          initialDelaySeconds: 60
           periodSeconds: 10
           timeoutSeconds: 5
+          failureThreshold: 10
       volumes:
       - name: mssql-storage
         persistentVolumeClaim:

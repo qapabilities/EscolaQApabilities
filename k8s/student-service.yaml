@@ -9,7 +9,7 @@ metadata:
     app.kubernetes.io/component: api
     app.kubernetes.io/version: "1.0"
 spec:
-  replicas: 3
+  replicas: 1
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -26,7 +26,7 @@ spec:
     spec:
       containers:
       - name: student-service
-        image: escolaqapabilities/student-service:latest
+        image: crescolaqapabilities.azurecr.io/student-service:latest
         imagePullPolicy: Always
         ports:
         - containerPort: 8080
@@ -47,11 +47,11 @@ spec:
             name: student-service-config
         resources:
           requests:
-            memory: "256Mi"
-            cpu: "250m"
+            memory: "128Mi"
+            cpu: "100m"
           limits:
-            memory: "512Mi"
-            cpu: "500m"
+            memory: "256Mi"
+            cpu: "200m"
         livenessProbe:
           httpGet:
             path: /health

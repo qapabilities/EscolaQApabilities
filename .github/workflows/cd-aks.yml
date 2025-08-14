@@ -131,22 +131,14 @@ jobs:
     # Aplicar configurações base (se necessário)
     - name: 📋 Apply Base Configurations
       run: |
-        # Aplicar namespace, configmaps, etc.
+        # Aplicar configurações base
+        echo "📋 Applying base configurations..."
         kubectl apply -f k8s/namespace.yaml
         kubectl apply -f k8s/configmap.yaml
+        kubectl apply -f k8s/secret.yaml
         
-        # Verificar se SQL Server está rodando
-        if ! kubectl get deployment sql-server -n ${{ env.NAMESPACE }} &> /dev/null; then
-          echo "📦 Deploying SQL Server..."
-          kubectl apply -f k8s/sql-server.yaml
-          
-          # Aguardar SQL Server estar pronto
-          echo "⏳ Waiting for SQL Server to be ready..."
-          kubectl wait --for=condition=ready pod \
-            -l app.kubernetes.io/name=sql-server \
-            -n ${{ env.NAMESPACE }} \
-            --timeout=300s
-        fi
+        echo "✅ Base configurations applied!"
+        echo "📋 Using SQLite database - no external database required!"
         
     # Atualizar imagem no deployment
     - name: 🔄 Update Deployment Image
@@ -338,18 +330,30 @@ jobs:
     # Realizar rollback
     - name: 🔄 Perform Rollback
       run: |
-        echo "❌ Deployment falhou! Realizando rollback..."
+        echo "❌ Deployment falhou! Verificando se há versão anterior para rollback..."
         
-        # Rollback para versão anterior
-        kubectl rollout undo deployment/${{ env.DEPLOYMENT_NAME }} \
-          -n ${{ env.NAMESPACE }}
+        # Verificar se deployment existe
+        if kubectl get deployment ${{ env.DEPLOYMENT_NAME }} -n ${{ env.NAMESPACE }} &> /dev/null; then
+          echo "📋 Deployment encontrado, fazendo rollback..."
           
-        # Aguardar rollback completar
-        kubectl rollout status deployment/${{ env.DEPLOYMENT_NAME }} \
-          -n ${{ env.NAMESPACE }} \
-          --timeout=300s
+          # Rollback para versão anterior
+          kubectl rollout undo deployment/${{ env.DEPLOYMENT_NAME }} \
+            -n ${{ env.NAMESPACE }}
+            
+          # Aguardar rollback completar
+          kubectl rollout status deployment/${{ env.DEPLOYMENT_NAME }} \
+            -n ${{ env.NAMESPACE }} \
+            --timeout=300s
+            
+          echo "🔄 Rollback concluído!"
+        else
+          echo "⚠️ Deployment não existe ainda, limpando recursos criados..."
           
-        echo "🔄 Rollback concluído!"
+          # Limpar recursos criados no deploy que falhou
+          kubectl delete all -l app.kubernetes.io/name=student-service -n ${{ env.NAMESPACE }} --ignore-not-found=true
+          
+          echo "🧹 Recursos limpos!"
+        fi
         
     - name: 📢 Rollback Notification
       run: |
