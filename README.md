@@ -1,5 +1,12 @@
 # Escola QApabilities - Microsserviço de Alunos
 
+[![CI](https://github.com/seu-usuario/EscolaQApabilities/actions/workflows/ci.yml/badge.svg)](https://github.com/seu-usuario/EscolaQApabilities/actions/workflows/ci.yml)
+[![CD](https://github.com/seu-usuario/EscolaQApabilities/actions/workflows/cd-aks.yml/badge.svg)](https://github.com/seu-usuario/EscolaQApabilities/actions/workflows/cd-aks.yml)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![.NET](https://img.shields.io/badge/.NET-8.0-purple.svg)](https://dotnet.microsoft.com/)
+[![Docker](https://img.shields.io/badge/Docker-Ready-blue.svg)](Dockerfile)
+[![Kubernetes](https://img.shields.io/badge/Kubernetes-AKS-326CE5.svg)](deploy-k8s.yaml)
+
 Este é um microsserviço para o cadastro e gerenciamento de alunos da Escola QApabilities, desenvolvido seguindo as melhores práticas de Clean Architecture, Clean Code e SOLID principles.
 
 ## 🏗️ Arquitetura
@@ -50,11 +57,40 @@ O projeto segue a Clean Architecture com as seguintes camadas:
 - ✅ Validação de data de nascimento
 - ✅ Validação de tamanhos de campos
 
-## 🛠️ Como Executar
+## 🚀 Deploy e Execução
+
+### 🐳 **Docker Local**
+```bash
+# Build e execução com Docker Compose
+docker-compose up --build
+
+# Acesso: http://localhost:8080
+```
+
+### ☸️ **Kubernetes Local (Docker Desktop)**
+```bash
+# Build da imagem
+docker build -t escola-student-service:latest .
+
+# Deploy no Kubernetes
+kubectl apply -f deploy-k8s-local.yaml
+
+# Acesso: http://localhost:30080
+```
+
+### ☁️ **Deploy Automático no AKS**
+```bash
+# Pipeline CI/CD automática via GitHub Actions
+# 1. Configure os secrets no GitHub (ver PIPELINE_SETUP.md)
+# 2. Push para branch main
+# 3. Deploy automático no Azure!
+```
+
+## 🛠️ Como Executar Localmente
 
 ### Pré-requisitos
 - .NET 8.0 SDK
-- SQL Server (LocalDB ou SQL Server Express)
+- Docker Desktop (opcional)
 - Visual Studio 2022 ou VS Code
 
 ### Passos para Execução

@@ -16,10 +16,23 @@ public static class InfrastructureServiceCollectionExtensions
         IConfiguration configuration)
     {
         // Configurar Entity Framework
+        var connectionString = Environment.GetEnvironmentVariable("STUDENT_DB_CONNECTION_STRING")
+            ?? configuration.GetConnectionString("DefaultConnection");
+        var useSqlite = Environment.GetEnvironmentVariable("USE_SQLITE") == "true";
+            
         services.AddDbContext<StudentDbContext>(options =>
-            options.UseSqlServer(
-                configuration.GetConnectionString("DefaultConnection"),
-                b => b.MigrationsAssembly("EscolaQApabilities.StudentService.Infrastructure")));
+        {
+            if (useSqlite)
+            {
+                options.UseSqlite(connectionString ?? "Data Source=:memory:",
+                    b => b.MigrationsAssembly("EscolaQApabilities.StudentService.Infrastructure"));
+            }
+            else
+            {
+                options.UseSqlServer(connectionString,
+                    b => b.MigrationsAssembly("EscolaQApabilities.StudentService.Infrastructure"));
+            }
+        });
 
         // Registrar repositórios
         services.AddScoped<IStudentRepository, StudentRepository>();

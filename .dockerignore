@@ -1,0 +1,61 @@
+# Arquivos e pastas a serem ignorados no build Docker
+
+# Build outputs
+**/bin/
+**/obj/
+**/out/
+
+# IDE files
+.vs/
+.vscode/
+*.user
+*.suo
+*.cache
+*.swp
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Docker
+Dockerfile*
+.dockerignore
+
+# Documentation
+README.md
+*.md
+
+# Tests
+**/TestResults/
+**/*Tests/
+
+# Temporary files
+**/tmp/
+**/temp/
+
+# Environment files
+.env
+.env.local
+.env.production
+
+# Logs
+**/logs/
+*.log
+
+# Runtime files
+**/wwwroot/
+
+# NuGet
+*.nupkg
+**/packages/
+

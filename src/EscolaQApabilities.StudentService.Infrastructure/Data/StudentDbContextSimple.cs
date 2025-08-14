@@ -3,9 +3,9 @@ using Microsoft.EntityFrameworkCore;
 
 namespace EscolaQApabilities.StudentService.Infrastructure.Data;
 
-public class StudentDbContext : DbContext
+public class StudentDbContextSimple : DbContext
 {
-    public StudentDbContext(DbContextOptions<StudentDbContext> options) : base(options)
+    public StudentDbContextSimple(DbContextOptions<StudentDbContext> options) : base(options)
     {
     }
 
@@ -16,7 +16,7 @@ public class StudentDbContext : DbContext
     {
         base.OnModelCreating(modelBuilder);
 
-        // Configuração simplificada da entidade Student para SQLite
+        // Configuração simplificada da entidade Student
         modelBuilder.Entity<Student>(entity =>
         {
             entity.HasKey(e => e.Id);
@@ -48,7 +48,7 @@ public class StudentDbContext : DbContext
             entity.HasIndex(e => e.Name);
         });
 
-        // Configuração simplificada da entidade User para SQLite
+        // Configuração simplificada da entidade User
         modelBuilder.Entity<User>(entity =>
         {
             entity.HasKey(e => e.Id);
@@ -71,3 +71,4 @@ public class StudentDbContext : DbContext
         });
     }
 }
+
