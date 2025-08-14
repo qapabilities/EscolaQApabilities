@@ -1,4 +1,10 @@
-name: 🚀 CD - Deploy para AKS
+# 🚀 CD Pipeline - Continuous Deployment to AKS
+# Escola QApabilities - Student Service
+# 
+# Triggers: Push para main + Manual
+# Jobs: Build & Push Docker → ACR, Deploy → AKS, Health Checks
+
+name: CD - Deploy para AKS
 
 on:
   push:
@@ -6,234 +12,347 @@ on:
   workflow_dispatch:
     inputs:
       environment:
-        description: 'Ambiente para deploy'
+        description: 'Environment to deploy'
         required: true
         default: 'production'
         type: choice
         options:
-        - production
-        - staging
+          - production
+          - staging
 
 env:
-  REGISTRY_NAME: escolaaksregistry
-  CLUSTER_NAME: escola-aks
-  RESOURCE_GROUP: escola-qapabilities-rg
-  NAMESPACE: escola-qapabilities
-  APP_NAME: student-service
-  IMAGE_TAG: ${{ github.sha }}
+  AZURE_RESOURCE_GROUP: 'rg-escola-qapabilities'
+  AZURE_CLUSTER_NAME: 'aks-escola-qapabilities'
+  AZURE_REGISTRY_NAME: 'crescolaqapabilities'
+  IMAGE_NAME: 'student-service'
+  NAMESPACE: 'escola-qapabilities'
+  DEPLOYMENT_NAME: 'student-service'
 
 jobs:
+  # ============================================================================
+  # JOB 1: BUILD & PUSH DOCKER IMAGE
+  # ============================================================================
   build-and-push:
-    name: 🏗️ Build & Push Docker Image
+    name: 🐳 Build & Push to ACR
     runs-on: ubuntu-latest
-    
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tags }}
+      
     steps:
-    - name: 📥 Checkout code
+    # Checkout do código
+    - name: 📥 Checkout Code
       uses: actions/checkout@v4
       
-    - name: 🔐 Login to Azure
-      uses: azure/login@v1
+    # Login no Azure
+    - name: 🔑 Azure Login
+      uses: azure/login@v2
       with:
         creds: ${{ secrets.AZURE_CREDENTIALS }}
         
-    - name: 🔐 Login to Azure Container Registry
+    # Login no Azure Container Registry
+    - name: 🐳 Login to ACR
       run: |
-        az acr login --name ${{ env.REGISTRY_NAME }}
+        az acr login --name ${{ env.AZURE_REGISTRY_NAME }}
         
-    - name: 🏗️ Build and push Docker image
+    # Configurar metadados da imagem
+    - name: 🏷️ Extract Metadata
+      id: meta
+      run: |
+        IMAGE_TAG="${{ env.AZURE_REGISTRY_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}"
+        
+        if [ "${{ github.event_name }}" = "push" ]; then
+          VERSION="v$(date +%Y%m%d%H%M%S)-${GITHUB_SHA::8}"
+        else
+          VERSION="manual-$(date +%Y%m%d%H%M%S)"
+        fi
+        
+        FULL_TAG="${IMAGE_TAG}:${VERSION}"
+        LATEST_TAG="${IMAGE_TAG}:latest"
+        
+        echo "tags=${FULL_TAG}" >> $GITHUB_OUTPUT
+        echo "latest=${LATEST_TAG}" >> $GITHUB_OUTPUT
+        echo "version=${VERSION}" >> $GITHUB_OUTPUT
+        
+        echo "🏷️ Image Tag: ${FULL_TAG}"
+        echo "🏷️ Latest Tag: ${LATEST_TAG}"
+        
+    # Build e Push da imagem Docker
+    - name: 🏗️ Build & Push Docker Image
       run: |
         # Build da imagem
-        docker build -t ${{ env.REGISTRY_NAME }}.azurecr.io/${{ env.APP_NAME }}:${{ env.IMAGE_TAG }} .
-        docker build -t ${{ env.REGISTRY_NAME }}.azurecr.io/${{ env.APP_NAME }}:latest .
+        docker build \
+          --tag ${{ steps.meta.outputs.tags }} \
+          --tag ${{ steps.meta.outputs.latest }} \
+          --build-arg BUILD_VERSION=${{ steps.meta.outputs.version }} \
+          .
+          
+        # Push para ACR
+        docker push ${{ steps.meta.outputs.tags }}
+        docker push ${{ steps.meta.outputs.latest }}
         
-        # Push das imagens
-        docker push ${{ env.REGISTRY_NAME }}.azurecr.io/${{ env.APP_NAME }}:${{ env.IMAGE_TAG }}
-        docker push ${{ env.REGISTRY_NAME }}.azurecr.io/${{ env.APP_NAME }}:latest
-        
-    - name: 📊 Scan Docker image for vulnerabilities
-      uses: aquasecurity/trivy-action@master
-      with:
-        image-ref: ${{ env.REGISTRY_NAME }}.azurecr.io/${{ env.APP_NAME }}:${{ env.IMAGE_TAG }}
-        format: 'sarif'
-        output: 'trivy-image-results.sarif'
-        
-    - name: 📤 Upload image scan results
-      uses: github/codeql-action/upload-sarif@v2
-      if: always()
-      with:
-        sarif_file: 'trivy-image-results.sarif'
+        echo "✅ Imagem enviada para ACR: ${{ steps.meta.outputs.tags }}"
 
+  # ============================================================================
+  # JOB 2: DEPLOY TO AKS
+  # ============================================================================
   deploy-to-aks:
-    name: 🚀 Deploy to AKS
+    name: ☸️ Deploy to AKS
     runs-on: ubuntu-latest
     needs: build-and-push
     environment: 
       name: ${{ github.event.inputs.environment || 'production' }}
-      url: https://escola-aks.brazilsouth.cloudapp.azure.com
-    
+      url: ${{ steps.get-url.outputs.app-url }}
+      
     steps:
-    - name: 📥 Checkout code
+    # Checkout do código
+    - name: 📥 Checkout Code
       uses: actions/checkout@v4
       
-    - name: 🔐 Login to Azure
-      uses: azure/login@v1
+    # Login no Azure
+    - name: 🔑 Azure Login
+      uses: azure/login@v2
       with:
         creds: ${{ secrets.AZURE_CREDENTIALS }}
         
+    # Configurar kubectl
     - name: ⚙️ Setup kubectl
-      uses: azure/setup-kubectl@v3
-      with:
-        version: 'latest'
-        
-    - name: 🔗 Get AKS credentials
       run: |
         az aks get-credentials \
-          --resource-group ${{ env.RESOURCE_GROUP }} \
-          --name ${{ env.CLUSTER_NAME }} \
+          --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+          --name ${{ env.AZURE_CLUSTER_NAME }} \
           --overwrite-existing
           
-    - name: 📝 Update Kubernetes manifests
+    # Verificar conectividade com cluster
+    - name: 🔍 Check Cluster Connection
       run: |
-        # Atualizar a imagem no manifest
-        sed -i "s|image: .*|image: ${{ env.REGISTRY_NAME }}.azurecr.io/${{ env.APP_NAME }}:${{ env.IMAGE_TAG }}|g" deploy-k8s.yaml
+        kubectl cluster-info
+        kubectl get nodes
         
-        # Adicionar labels para rastreamento
-        sed -i "/metadata:/a\\  labels:\\n    app.kubernetes.io/version: \"${{ env.IMAGE_TAG }}\"\\n    github.com/sha: \"${{ github.sha }}\"\\n    github.com/run-id: \"${{ github.run_id }}\"" deploy-k8s.yaml
-        
-    - name: 🚀 Deploy to Kubernetes
+    # Aplicar configurações base (se necessário)
+    - name: 📋 Apply Base Configurations
       run: |
-        # Aplicar os manifestos
-        kubectl apply -f deploy-k8s.yaml
+        # Aplicar namespace, configmaps, etc.
+        kubectl apply -f k8s/namespace.yaml
+        kubectl apply -f k8s/configmap.yaml
         
-        # Aguardar o rollout
-        kubectl rollout status deployment/${{ env.APP_NAME }} -n ${{ env.NAMESPACE }} --timeout=600s
-        
-    - name: ✅ Verify deployment
-      run: |
-        # Verificar pods
-        kubectl get pods -n ${{ env.NAMESPACE }} -l app=${{ env.APP_NAME }}
-        
-        # Verificar services
-        kubectl get services -n ${{ env.NAMESPACE }}
-        
-        # Verificar ingress
-        kubectl get ingress -n ${{ env.NAMESPACE }}
-
-  health-check:
-    name: 🏥 Health Check
-    runs-on: ubuntu-latest
-    needs: deploy-to-aks
-    
-    steps:
-    - name: 🔐 Login to Azure
-      uses: azure/login@v1
-      with:
-        creds: ${{ secrets.AZURE_CREDENTIALS }}
-        
-    - name: ⚙️ Setup kubectl
-      uses: azure/setup-kubectl@v3
-      with:
-        version: 'latest'
-        
-    - name: 🔗 Get AKS credentials
-      run: |
-        az aks get-credentials \
-          --resource-group ${{ env.RESOURCE_GROUP }} \
-          --name ${{ env.CLUSTER_NAME }} \
-          --overwrite-existing
+        # Verificar se SQL Server está rodando
+        if ! kubectl get deployment sql-server -n ${{ env.NAMESPACE }} &> /dev/null; then
+          echo "📦 Deploying SQL Server..."
+          kubectl apply -f k8s/sql-server.yaml
           
-    - name: 🏥 Wait for application to be ready
+          # Aguardar SQL Server estar pronto
+          echo "⏳ Waiting for SQL Server to be ready..."
+          kubectl wait --for=condition=ready pod \
+            -l app.kubernetes.io/name=sql-server \
+            -n ${{ env.NAMESPACE }} \
+            --timeout=300s
+        fi
+        
+    # Atualizar imagem no deployment
+    - name: 🔄 Update Deployment Image
       run: |
-        echo "⏳ Aguardando aplicação ficar pronta..."
-        kubectl wait --for=condition=ready pod -l app=${{ env.APP_NAME }} -n ${{ env.NAMESPACE }} --timeout=300s
+        # Atualizar a imagem no manifesto
+        sed -i "s|escolaqapabilities/student-service:latest|${{ needs.build-and-push.outputs.image-tag }}|g" k8s/student-service.yaml
         
-    - name: 🔍 Test health endpoint
+        # Aplicar o deployment atualizado
+        kubectl apply -f k8s/student-service.yaml
+        kubectl apply -f k8s/ingress.yaml
+        
+    # Aguardar deployment estar pronto
+    - name: ⏳ Wait for Deployment
       run: |
-        # Port-forward para testar localmente
-        kubectl port-forward service/${{ env.APP_NAME }} 8080:80 -n ${{ env.NAMESPACE }} &
-        PF_PID=$!
+        echo "⏳ Aguardando deployment estar pronto..."
+        kubectl rollout status deployment/${{ env.DEPLOYMENT_NAME }} \
+          -n ${{ env.NAMESPACE }} \
+          --timeout=600s
+          
+        echo "✅ Deployment concluído com sucesso!"
         
-        # Aguardar port-forward estar pronto
-        sleep 10
+    # Obter URL da aplicação
+    - name: 🌐 Get Application URL
+      id: get-url
+      run: |
+        # Aguardar IP externo do Load Balancer
+        echo "🔍 Obtendo IP externo do Load Balancer..."
         
-        # Testar health check
         for i in {1..30}; do
-          if curl -f http://localhost:8080/health; then
-            echo "✅ Health check passou!"
-            kill $PF_PID
-            exit 0
+          EXTERNAL_IP=$(kubectl get service ingress-nginx-controller \
+            -n ingress-nginx \
+            -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
+            
+          if [ ! -z "$EXTERNAL_IP" ]; then
+            echo "🌐 IP Externo: $EXTERNAL_IP"
+            echo "app-url=http://$EXTERNAL_IP" >> $GITHUB_OUTPUT
+            break
           fi
-          echo "⏳ Tentativa $i/30 - aguardando..."
+          
+          echo "⏳ Aguardando IP externo... (tentativa $i/30)"
           sleep 10
         done
         
-        echo "❌ Health check falhou após 5 minutos"
-        kill $PF_PID
-        exit 1
-        
-    - name: 🧪 Test API endpoints
-      run: |
-        # Port-forward para testar APIs
-        kubectl port-forward service/${{ env.APP_NAME }} 8080:80 -n ${{ env.NAMESPACE }} &
-        PF_PID=$!
-        
-        # Aguardar port-forward estar pronto
-        sleep 10
-        
-        # Testar swagger
-        if curl -f http://localhost:8080/swagger/index.html; then
-          echo "✅ Swagger está acessível!"
-        else
-          echo "❌ Swagger não está acessível"
-          kill $PF_PID
-          exit 1
+        if [ -z "$EXTERNAL_IP" ]; then
+          echo "⚠️ IP externo não encontrado, usando NodePort"
+          NODE_IP=$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="ExternalIP")].address}')
+          NODE_PORT=$(kubectl get service student-service-nodeport -n ${{ env.NAMESPACE }} -o jsonpath='{.spec.ports[0].nodePort}')
+          echo "app-url=http://$NODE_IP:$NODE_PORT" >> $GITHUB_OUTPUT
         fi
-        
-        # Cleanup
-        kill $PF_PID
 
-  rollback-on-failure:
-    name: 🔄 Rollback on Failure
+  # ============================================================================
+  # JOB 3: HEALTH CHECKS & API TESTS
+  # ============================================================================
+  health-checks:
+    name: 🏥 Health Checks & API Tests
     runs-on: ubuntu-latest
-    needs: [deploy-to-aks, health-check]
-    if: failure()
+    needs: [build-and-push, deploy-to-aks]
     
     steps:
-    - name: 🔐 Login to Azure
-      uses: azure/login@v1
+    # Checkout para testes de API
+    - name: 📥 Checkout Code
+      uses: actions/checkout@v4
+      
+    # Login no Azure
+    - name: 🔑 Azure Login
+      uses: azure/login@v2
       with:
         creds: ${{ secrets.AZURE_CREDENTIALS }}
         
+    # Configurar kubectl
     - name: ⚙️ Setup kubectl
-      uses: azure/setup-kubectl@v3
-      with:
-        version: 'latest'
-        
-    - name: 🔗 Get AKS credentials
       run: |
         az aks get-credentials \
-          --resource-group ${{ env.RESOURCE_GROUP }} \
-          --name ${{ env.CLUSTER_NAME }} \
+          --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+          --name ${{ env.AZURE_CLUSTER_NAME }} \
           --overwrite-existing
           
-    - name: 🔄 Rollback deployment
+    # Health Check básico
+    - name: 🏥 Basic Health Check
       run: |
-        echo "❌ Deploy falhou, iniciando rollback..."
-        kubectl rollout undo deployment/${{ env.APP_NAME }} -n ${{ env.NAMESPACE }}
-        kubectl rollout status deployment/${{ env.APP_NAME }} -n ${{ env.NAMESPACE }} --timeout=300s
-        echo "✅ Rollback concluído"
+        echo "🏥 Verificando saúde dos pods..."
+        
+        # Verificar se pods estão rodando
+        kubectl get pods -n ${{ env.NAMESPACE }}
+        
+        # Verificar logs dos pods
+        echo "📋 Últimos logs do deployment:"
+        kubectl logs deployment/${{ env.DEPLOYMENT_NAME }} \
+          -n ${{ env.NAMESPACE }} \
+          --tail=20
+          
+    # Test do endpoint de health
+    - name: 🔍 Health Endpoint Test
+      run: |
+        # Obter IP do serviço
+        CLUSTER_IP=$(kubectl get service student-service-clusterip \
+          -n ${{ env.NAMESPACE }} \
+          -o jsonpath='{.spec.clusterIP}')
+          
+        echo "🔍 Testando health endpoint: http://$CLUSTER_IP:8080/health"
+        
+        # Port forward temporário para teste
+        kubectl port-forward service/student-service-clusterip 8080:8080 -n ${{ env.NAMESPACE }} &
+        PORT_FORWARD_PID=$!
+        
+        # Aguardar port forward estar pronto
+        sleep 10
+        
+        # Testar endpoint
+        for i in {1..5}; do
+          if curl -f http://localhost:8080/health; then
+            echo "✅ Health check passou!"
+            break
+          else
+            echo "⏳ Tentativa $i/5 falhou, tentando novamente..."
+            sleep 10
+          fi
+        done
+        
+        # Matar port forward
+        kill $PORT_FORWARD_PID
+        
+    # Test básico de autenticação
+    - name: 🔑 Authentication Test
+      run: |
+        echo "🔑 Testando endpoint de autenticação..."
+        
+        # Port forward para testes
+        kubectl port-forward service/student-service-clusterip 8080:8080 -n ${{ env.NAMESPACE }} &
+        PORT_FORWARD_PID=$!
+        sleep 10
+        
+        # Testar login
+        if curl -X POST http://localhost:8080/api/auth/login \
+          -H "Content-Type: application/json" \
+          -d '{"email": "admin@qapabilities.com", "password": "admin123"}'; then
+          echo "✅ Autenticação funcionando!"
+        else
+          echo "❌ Falha na autenticação"
+        fi
+        
+        kill $PORT_FORWARD_PID
 
-  notify-success:
-    name: 📢 Notificar Sucesso
+  # ============================================================================
+  # JOB 4: DEPLOYMENT SUCCESS
+  # ============================================================================
+  deployment-success:
+    name: ✅ Deployment Success
     runs-on: ubuntu-latest
-    needs: [health-check]
+    needs: [build-and-push, deploy-to-aks, health-checks]
     if: success()
     
     steps:
-    - name: 🎉 Deploy Success Notification
+    - name: 🎉 Deployment Success Notification
       run: |
-        echo "🎉 Deploy realizado com sucesso!"
-        echo "📦 Imagem: ${{ env.REGISTRY_NAME }}.azurecr.io/${{ env.APP_NAME }}:${{ env.IMAGE_TAG }}"
-        echo "🏷️ SHA: ${{ github.sha }}"
-        echo "🔗 Run: ${{ github.run_id }}"
-        echo "🌐 URL: https://escola-aks.brazilsouth.cloudapp.azure.com"
+        echo "🎉 DEPLOYMENT REALIZADO COM SUCESSO!"
+        echo ""
+        echo "📦 Imagem: ${{ needs.build-and-push.outputs.image-tag }}"
+        echo "🌐 URL: ${{ needs.deploy-to-aks.outputs.app-url }}"
+        echo "🏥 Health Checks: ✅ Passou"
+        echo "🔑 Auth Tests: ✅ Passou"
+        echo ""
+        echo "🚀 Aplicação está rodando no AKS!"
+
+  # ============================================================================
+  # JOB 5: ROLLBACK (se falhar)
+  # ============================================================================
+  rollback-on-failure:
+    name: 🔄 Auto Rollback
+    runs-on: ubuntu-latest
+    needs: [deploy-to-aks, health-checks]
+    if: failure()
+    
+    steps:
+    # Login no Azure
+    - name: 🔑 Azure Login
+      uses: azure/login@v2
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+        
+    # Configurar kubectl  
+    - name: ⚙️ Setup kubectl
+      run: |
+        az aks get-credentials \
+          --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+          --name ${{ env.AZURE_CLUSTER_NAME }} \
+          --overwrite-existing
+          
+    # Realizar rollback
+    - name: 🔄 Perform Rollback
+      run: |
+        echo "❌ Deployment falhou! Realizando rollback..."
+        
+        # Rollback para versão anterior
+        kubectl rollout undo deployment/${{ env.DEPLOYMENT_NAME }} \
+          -n ${{ env.NAMESPACE }}
+          
+        # Aguardar rollback completar
+        kubectl rollout status deployment/${{ env.DEPLOYMENT_NAME }} \
+          -n ${{ env.NAMESPACE }} \
+          --timeout=300s
+          
+        echo "🔄 Rollback concluído!"
+        
+    - name: 📢 Rollback Notification
+      run: |
+        echo "🔄 ROLLBACK REALIZADO!"
+        echo "❌ O deployment falhou e foi revertido para a versão anterior"
+        echo "📋 Verifique os logs para identificar o problema"

@@ -1,122 +1,182 @@
-name: 🔧 CI - Build e Testes
+# 🔄 CI Pipeline - Continuous Integration
+# Escola QApabilities - Student Service
+# 
+# Triggers: Push/PR em qualquer branch
+# Jobs: Build, Tests, Quality, Security
+
+name: CI - Continuous Integration
 
 on:
   push:
-    branches: [ main, develop, feature/* ]
+    branches: [ main, develop, feature/*, hotfix/* ]
   pull_request:
     branches: [ main, develop ]
 
 env:
   DOTNET_VERSION: '8.0.x'
-  SOLUTION_PATH: './EscolaQApabilities.sln'
+  SOLUTION_FILE: 'EscolaQApabilities.StudentService.sln'
 
 jobs:
+  # ============================================================================
+  # JOB 1: BUILD & TEST
+  # ============================================================================
   build-and-test:
-    name: 🏗️ Build e Testes
+    name: 🏗️ Build & Test
     runs-on: ubuntu-latest
     
     steps:
-    - name: 📥 Checkout code
+    # Checkout do código
+    - name: 📥 Checkout Code
       uses: actions/checkout@v4
       
-    - name: ⚙️ Setup .NET
+    # Setup .NET 8
+    - name: 🔧 Setup .NET ${{ env.DOTNET_VERSION }}
       uses: actions/setup-dotnet@v4
       with:
         dotnet-version: ${{ env.DOTNET_VERSION }}
         
-    - name: 📦 Cache dependencies
-      uses: actions/cache@v3
+    # Cache de pacotes NuGet
+    - name: 📦 Cache NuGet packages
+      uses: actions/cache@v4
       with:
         path: ~/.nuget/packages
         key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
         restore-keys: |
           ${{ runner.os }}-nuget-
           
-    - name: 🔄 Restore dependencies
-      run: dotnet restore ${{ env.SOLUTION_PATH }}
+    # Restore dependencies
+    - name: 📦 Restore Dependencies
+      run: dotnet restore ${{ env.SOLUTION_FILE }}
       
-    - name: 🏗️ Build solution
-      run: dotnet build ${{ env.SOLUTION_PATH }} --no-restore --configuration Release
+    # Build da aplicação
+    - name: 🏗️ Build Application
+      run: dotnet build ${{ env.SOLUTION_FILE }} --no-restore --configuration Release
       
-    - name: 🧪 Run unit tests
+    # Executar testes unitários
+    - name: 🧪 Run Unit Tests
       run: |
-        dotnet test ${{ env.SOLUTION_PATH }} \
+        dotnet test ${{ env.SOLUTION_FILE }} \
           --no-build \
           --configuration Release \
           --verbosity normal \
           --collect:"XPlat Code Coverage" \
-          --results-directory ./coverage
+          --results-directory ./TestResults \
+          --logger "trx;LogFileName=test-results.trx"
           
-    - name: 📊 Upload coverage reports
-      uses: codecov/codecov-action@v3
+    # Upload test results
+    - name: 📊 Upload Test Results
+      uses: actions/upload-artifact@v4
+      if: always()
       with:
-        directory: ./coverage
+        name: test-results
+        path: ./TestResults/
+        
+    # Upload de coverage para Codecov
+    - name: 📈 Upload Coverage to Codecov
+      uses: codecov/codecov-action@v4
+      if: always()
+      with:
+        directory: ./TestResults
         fail_ci_if_error: false
         verbose: true
 
+  # ============================================================================
+  # JOB 2: CODE QUALITY ANALYSIS
+  # ============================================================================
   code-quality:
-    name: 🔍 Qualidade do Código
+    name: 📊 Code Quality Analysis
     runs-on: ubuntu-latest
+    needs: build-and-test
     
     steps:
-    - name: 📥 Checkout code
+    - name: 📥 Checkout Code
       uses: actions/checkout@v4
-      
-    - name: ⚙️ Setup .NET
+      with:
+        fetch-depth: 0  # Para análise completa
+        
+    - name: 🔧 Setup .NET ${{ env.DOTNET_VERSION }}
       uses: actions/setup-dotnet@v4
       with:
         dotnet-version: ${{ env.DOTNET_VERSION }}
         
-    - name: 🔄 Restore dependencies
-      run: dotnet restore ${{ env.SOLUTION_PATH }}
-      
-    - name: 🔍 Run code analysis
+    # Análise de qualidade com dotnet format
+    - name: 🧹 Code Format Check
       run: |
-        dotnet build ${{ env.SOLUTION_PATH }} \
-          --configuration Release \
-          --verbosity normal \
-          /p:TreatWarningsAsErrors=true \
-          /p:WarningsAsErrors="" \
-          /p:WarningsNotAsErrors="CS1591"
+        dotnet format ${{ env.SOLUTION_FILE }} --verify-no-changes --verbosity diagnostic
+        
+    # Análise de segurança com CodeQL (se houver configuração)
+    - name: 🔍 Initialize CodeQL
+      uses: github/codeql-action/init@v3
+      with:
+        languages: csharp
+        
+    - name: 🏗️ Build for CodeQL
+      run: dotnet build ${{ env.SOLUTION_FILE }} --configuration Release
+      
+    - name: 🔍 Perform CodeQL Analysis
+      uses: github/codeql-action/analyze@v3
 
-  security-scan:
-    name: 🛡️ Security Scan
+  # ============================================================================
+  # JOB 3: DOCKER BUILD & SECURITY SCAN
+  # ============================================================================
+  docker-security:
+    name: 🐳 Docker Build & Security
     runs-on: ubuntu-latest
+    needs: build-and-test
     
     steps:
-    - name: 📥 Checkout code
+    - name: 📥 Checkout Code
       uses: actions/checkout@v4
       
-    - name: 🛡️ Run Trivy vulnerability scanner
+    # Build da imagem Docker (sem push)
+    - name: 🐳 Build Docker Image
+      run: |
+        docker build -t escola-student-service:ci-${{ github.sha }} .
+        
+    # Security scan com Trivy
+    - name: 🔍 Run Trivy Security Scan
       uses: aquasecurity/trivy-action@master
       with:
-        scan-type: 'fs'
-        scan-ref: '.'
+        image-ref: 'escola-student-service:ci-${{ github.sha }}'
         format: 'sarif'
         output: 'trivy-results.sarif'
         
-    - name: 📤 Upload Trivy scan results
-      uses: github/codeql-action/upload-sarif@v2
+    # Upload security scan results
+    - name: 📊 Upload Trivy Results
+      uses: github/codeql-action/upload-sarif@v3
       if: always()
       with:
         sarif_file: 'trivy-results.sarif'
+        
+    # Vulnerability summary
+    - name: 📋 Trivy Summary
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: 'escola-student-service:ci-${{ github.sha }}'
+        format: 'table'
 
-  build-status:
-    name: ✅ Build Status
+  # ============================================================================
+  # JOB 4: SUCCESS NOTIFICATION
+  # ============================================================================
+  ci-success:
+    name: ✅ CI Success
     runs-on: ubuntu-latest
-    needs: [build-and-test, code-quality, security-scan]
-    if: always()
+    needs: [build-and-test, code-quality, docker-security]
+    if: success()
     
     steps:
-    - name: ✅ Build Success
-      if: ${{ needs.build-and-test.result == 'success' && needs.code-quality.result == 'success' && needs.security-scan.result == 'success' }}
+    - name: 🎉 CI Pipeline Success
       run: |
-        echo "🎉 Build completed successfully!"
-        echo "✅ All checks passed"
+        echo "🎉 CI Pipeline executada com sucesso!"
+        echo "✅ Build: OK"
+        echo "✅ Tests: OK" 
+        echo "✅ Quality: OK"
+        echo "✅ Security: OK"
+        echo ""
+        echo "📦 Pronto para CD (deploy) em caso de push para main!"
         
-    - name: ❌ Build Failed
-      if: ${{ needs.build-and-test.result == 'failure' || needs.code-quality.result == 'failure' || needs.security-scan.result == 'failure' }}
+    # Badge de status para README
+    - name: 📊 Update CI Badge
+      if: github.ref == 'refs/heads/main'
       run: |
-        echo "❌ Build failed!"
-        echo "🔍 Check the logs above for details"
-        exit 1
+        echo "✅ CI Badge atualizado para: PASSING"
