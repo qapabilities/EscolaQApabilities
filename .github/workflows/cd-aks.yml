@@ -76,21 +76,22 @@ jobs:
         echo "🏷️ Image Tag: ${FULL_TAG}"
         echo "🏷️ Latest Tag: ${LATEST_TAG}"
         
-    # Build e Push da imagem Docker
+    # Setup Docker Buildx para multi-platform builds
+    - name: 🔧 Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+      
+    # Build e Push da imagem Docker para ARM64
     - name: 🏗️ Build & Push Docker Image
-      run: |
-        # Build da imagem com plataforma específica para ARM64
-        docker build --platform linux/arm64 \
-          --tag ${{ steps.meta.outputs.tags }} \
-          --tag ${{ steps.meta.outputs.latest }} \
-          --build-arg BUILD_VERSION=${{ steps.meta.outputs.version }} \
-          .
-          
-        # Push para ACR
-        docker push ${{ steps.meta.outputs.tags }}
-        docker push ${{ steps.meta.outputs.latest }}
-        
-        echo "✅ Imagem enviada para ACR: ${{ steps.meta.outputs.tags }}"
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        platforms: linux/arm64
+        push: true
+        tags: |
+          ${{ steps.meta.outputs.tags }}
+          ${{ steps.meta.outputs.latest }}
+        build-args: |
+          BUILD_VERSION=${{ steps.meta.outputs.version }}
 
   # ============================================================================
   # JOB 2: DEPLOY TO AKS
