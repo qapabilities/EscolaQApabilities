@@ -32,21 +32,33 @@ public class CreateDefaultUsersCommandHandler : IRequestHandler<CreateDefaultUse
         {
             var usersCreated = 0;
 
-            // Criar usuário Admin
-            if (!await _userRepository.ExistsByEmailAsync("admin@qapabilities.com"))
+            // Obter credenciais de variáveis de ambiente (NUNCA hardcode em produção!)
+            var adminEmail = Environment.GetEnvironmentVariable("DEFAULT_ADMIN_EMAIL") ?? "admin@qapabilities.com";
+            var adminPassword = Environment.GetEnvironmentVariable("DEFAULT_ADMIN_PASSWORD") ?? "admin123";
+            var teacherEmail = Environment.GetEnvironmentVariable("DEFAULT_TEACHER_EMAIL") ?? "teacher@qapabilities.com";
+            var teacherPassword = Environment.GetEnvironmentVariable("DEFAULT_TEACHER_PASSWORD") ?? "teacher123";
+
+            // AVISO: Em produção, sempre defina as variáveis de ambiente!
+            if (adminPassword == "admin123" || teacherPassword == "teacher123")
             {
-                var adminPasswordHash = _passwordHasher.HashPassword("admin123");
-                var adminUser = new User("admin@qapabilities.com", adminPasswordHash, "Admin", "Administrador");
+                _logger.LogWarning("⚠️ USANDO SENHAS PADRÃO! Em produção, configure as variáveis: DEFAULT_ADMIN_PASSWORD, DEFAULT_TEACHER_PASSWORD");
+            }
+
+            // Criar usuário Admin
+            if (!await _userRepository.ExistsByEmailAsync(adminEmail))
+            {
+                var adminPasswordHash = _passwordHasher.HashPassword(adminPassword);
+                var adminUser = new User(adminEmail, adminPasswordHash, "Admin", "Administrador");
                 await _userRepository.AddAsync(adminUser);
                 usersCreated++;
                 _logger.LogInformation("Created default admin user");
             }
 
             // Criar usuário Teacher
-            if (!await _userRepository.ExistsByEmailAsync("teacher@qapabilities.com"))
+            if (!await _userRepository.ExistsByEmailAsync(teacherEmail))
             {
-                var teacherPasswordHash = _passwordHasher.HashPassword("teacher123");
-                var teacherUser = new User("teacher@qapabilities.com", teacherPasswordHash, "Teacher", "Professor");
+                var teacherPasswordHash = _passwordHasher.HashPassword(teacherPassword);
+                var teacherUser = new User(teacherEmail, teacherPasswordHash, "Teacher", "Professor");
                 await _userRepository.AddAsync(teacherUser);
                 usersCreated++;
                 _logger.LogInformation("Created default teacher user");

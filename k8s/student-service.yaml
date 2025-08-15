@@ -42,6 +42,16 @@ spec:
             secretKeyRef:
               name: student-service-secret
               key: JWT_KEY
+        - name: DEFAULT_ADMIN_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: student-service-secret
+              key: DEFAULT_ADMIN_PASSWORD
+        - name: DEFAULT_TEACHER_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: student-service-secret
+              key: DEFAULT_TEACHER_PASSWORD
         envFrom:
         - configMapRef:
             name: student-service-config

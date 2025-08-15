@@ -165,16 +165,16 @@ jobs:
     - name: 🌐 Get Application URL
       id: get-url
       run: |
-        # Aguardar IP externo do Load Balancer
-        echo "🔍 Obtendo IP externo do Load Balancer..."
+        # Aguardar IP externo do LoadBalancer do student-service
+        echo "🔍 Obtendo IP externo do LoadBalancer..."
         
         for i in {1..30}; do
-          EXTERNAL_IP=$(kubectl get service ingress-nginx-controller \
-            -n ingress-nginx \
+          EXTERNAL_IP=$(kubectl get service ${{ env.DEPLOYMENT_NAME }} \
+            -n ${{ env.NAMESPACE }} \
             -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
             
           if [ ! -z "$EXTERNAL_IP" ]; then
-            echo "🌐 IP Externo: $EXTERNAL_IP"
+            echo "🌐 IP Externo encontrado: $EXTERNAL_IP"
             echo "app-url=http://$EXTERNAL_IP" >> $GITHUB_OUTPUT
             break
           fi
@@ -184,10 +184,13 @@ jobs:
         done
         
         if [ -z "$EXTERNAL_IP" ]; then
-          echo "⚠️ IP externo não encontrado, usando NodePort"
-          NODE_IP=$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="ExternalIP")].address}')
-          NODE_PORT=$(kubectl get service student-service-nodeport -n ${{ env.NAMESPACE }} -o jsonpath='{.spec.ports[0].nodePort}')
-          echo "app-url=http://$NODE_IP:$NODE_PORT" >> $GITHUB_OUTPUT
+          echo "⚠️ IP externo não foi atribuído após 5 minutos"
+          echo "🔍 Verificando status do service..."
+          kubectl describe service ${{ env.DEPLOYMENT_NAME }} -n ${{ env.NAMESPACE }}
+          
+          echo "⚠️ Usando ClusterIP para testes internos"
+          CLUSTER_IP=$(kubectl get service ${{ env.DEPLOYMENT_NAME }} -n ${{ env.NAMESPACE }} -o jsonpath='{.spec.clusterIP}')
+          echo "app-url=http://$CLUSTER_IP" >> $GITHUB_OUTPUT
         fi
 
   # ============================================================================
@@ -234,21 +237,45 @@ jobs:
     # Test do endpoint de health
     - name: 🔍 Health Endpoint Test
       run: |
-        # Obter IP do serviço
-        CLUSTER_IP=$(kubectl get service student-service-clusterip \
+        # Obter IP do serviço LoadBalancer
+        EXTERNAL_IP=$(kubectl get service ${{ env.DEPLOYMENT_NAME }} \
           -n ${{ env.NAMESPACE }} \
-          -o jsonpath='{.spec.clusterIP}')
+          -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
           
-        echo "🔍 Testando health endpoint: http://$CLUSTER_IP:8080/health"
-        
-        # Port forward temporário para teste
-        kubectl port-forward service/student-service-clusterip 8080:8080 -n ${{ env.NAMESPACE }} &
-        PORT_FORWARD_PID=$!
-        
-        # Aguardar port forward estar pronto
-        sleep 10
-        
-        # Testar endpoint
+        if [ ! -z "$EXTERNAL_IP" ]; then
+          echo "🔍 Testando health endpoint via LoadBalancer: http://$EXTERNAL_IP/health"
+          
+          # Teste direto no LoadBalancer
+          for i in {1..10}; do
+            if curl -f -s "http://$EXTERNAL_IP/health" > /dev/null; then
+              echo "✅ Health check passou!"
+              break
+            else
+              echo "⏳ Aguardando aplicação ficar pronta... (tentativa $i/10)"
+              sleep 30
+            fi
+          done
+        else
+          echo "🔍 LoadBalancer não disponível, testando via port-forward..."
+          
+          # Port forward como fallback
+          kubectl port-forward service/${{ env.DEPLOYMENT_NAME }} 8080:80 -n ${{ env.NAMESPACE }} &
+          PORT_FORWARD_PID=$!
+          
+          # Aguardar port forward estar pronto
+          sleep 10
+          
+          # Testar endpoint via port-forward
+          if curl -f -s "http://localhost:8080/health" > /dev/null; then
+            echo "✅ Health check passou via port-forward!"
+          else
+            echo "❌ Health check falhou"
+            exit 1
+          fi
+          
+          # Limpar port forward
+          kill $PORT_FORWARD_PID 2>/dev/null || true
+        fi
         for i in {1..5}; do
           if curl -f http://localhost:8080/health; then
             echo "✅ Health check passou!"
