@@ -276,39 +276,63 @@ jobs:
           # Limpar port forward
           kill $PORT_FORWARD_PID 2>/dev/null || true
         fi
-        for i in {1..5}; do
-          if curl -f http://localhost:8080/health; then
-            echo "✅ Health check passou!"
-            break
-          else
-            echo "⏳ Tentativa $i/5 falhou, tentando novamente..."
-            sleep 10
-          fi
-        done
-        
-        # Matar port forward
-        kill $PORT_FORWARD_PID
         
     # Test básico de autenticação
     - name: 🔑 Authentication Test
       run: |
         echo "🔑 Testando endpoint de autenticação..."
         
-        # Port forward para testes
-        kubectl port-forward service/student-service-clusterip 8080:8080 -n ${{ env.NAMESPACE }} &
-        PORT_FORWARD_PID=$!
-        sleep 10
-        
-        # Testar login
-        if curl -X POST http://localhost:8080/api/auth/login \
-          -H "Content-Type: application/json" \
-          -d '{"email": "admin@qapabilities.com", "password": "admin123"}'; then
-          echo "✅ Autenticação funcionando!"
+        # Obter IP do LoadBalancer
+        EXTERNAL_IP=$(kubectl get service ${{ env.DEPLOYMENT_NAME }} \
+          -n ${{ env.NAMESPACE }} \
+          -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
+          
+        if [ ! -z "$EXTERNAL_IP" ]; then
+          echo "🔑 Testando login via LoadBalancer: http://$EXTERNAL_IP/api/auth/login"
+          
+          # Testar login com credenciais seguras
+          if curl -X POST "http://$EXTERNAL_IP/api/auth/login" \
+            -H "Content-Type: application/json" \
+            -d '{"email": "admin@qapabilities.com", "password": "SecureAdmin2024!"}' \
+            -f -s > /dev/null; then
+            echo "✅ Autenticação funcionando!"
+          else
+            echo "⚠️ Autenticação via LoadBalancer falhou, tentando port-forward..."
+            
+            # Fallback para port-forward
+            kubectl port-forward service/${{ env.DEPLOYMENT_NAME }} 8080:80 -n ${{ env.NAMESPACE }} &
+            PORT_FORWARD_PID=$!
+            sleep 10
+            
+            if curl -X POST "http://localhost:8080/api/auth/login" \
+              -H "Content-Type: application/json" \
+              -d '{"email": "admin@qapabilities.com", "password": "SecureAdmin2024!"}' \
+              -f -s > /dev/null; then
+              echo "✅ Autenticação funcionando via port-forward!"
+            else
+              echo "❌ Falha na autenticação"
+            fi
+            
+            kill $PORT_FORWARD_PID 2>/dev/null || true
+          fi
         else
-          echo "❌ Falha na autenticação"
+          echo "⚠️ LoadBalancer não disponível, usando port-forward..."
+          
+          kubectl port-forward service/${{ env.DEPLOYMENT_NAME }} 8080:80 -n ${{ env.NAMESPACE }} &
+          PORT_FORWARD_PID=$!
+          sleep 10
+          
+          if curl -X POST "http://localhost:8080/api/auth/login" \
+            -H "Content-Type: application/json" \
+            -d '{"email": "admin@qapabilities.com", "password": "SecureAdmin2024!"}' \
+            -f -s > /dev/null; then
+            echo "✅ Autenticação funcionando!"
+          else
+            echo "❌ Falha na autenticação"
+          fi
+          
+          kill $PORT_FORWARD_PID 2>/dev/null || true
         fi
-        
-        kill $PORT_FORWARD_PID
 
   # ============================================================================
   # JOB 4: DEPLOYMENT SUCCESS
