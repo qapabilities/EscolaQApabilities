@@ -150,14 +150,13 @@ builder.Services.AddCors(options =>
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment())
+// Swagger habilitado em todos os ambientes (incluindo produção)
+app.UseSwagger();
+app.UseSwaggerUI(c =>
 {
-    app.UseSwagger();
-    app.UseSwaggerUI(c =>
-    {
-        c.SwaggerEndpoint("/swagger/v1/swagger.json", "Student Service API V1");
-    });
-}
+    c.SwaggerEndpoint("/swagger/v1/swagger.json", "Student Service API V1");
+    c.RoutePrefix = "swagger"; // Swagger disponível em /swagger
+});
 
 // Configurar pipeline de segurança
 app.UseCors("RestrictedPolicy");
