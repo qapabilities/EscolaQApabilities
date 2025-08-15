@@ -79,8 +79,8 @@ jobs:
     # Build e Push da imagem Docker
     - name: 🏗️ Build & Push Docker Image
       run: |
-        # Build da imagem com plataforma específica
-        docker build --platform linux/amd64 \
+        # Build da imagem com plataforma específica para ARM64
+        docker build --platform linux/arm64 \
           --tag ${{ steps.meta.outputs.tags }} \
           --tag ${{ steps.meta.outputs.latest }} \
           --build-arg BUILD_VERSION=${{ steps.meta.outputs.version }} \
