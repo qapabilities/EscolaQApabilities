@@ -141,15 +141,28 @@ jobs:
         echo "✅ Base configurations applied!"
         echo "📋 Using SQLite database - no external database required!"
         
-    # Atualizar imagem no deployment
+    # Atualizar imagem no deployment (preservando LoadBalancer)
     - name: 🔄 Update Deployment Image
       run: |
-        # Atualizar a imagem no manifesto
-        sed -i "s|escolaqapabilities/student-service:latest|${{ needs.build-and-push.outputs.image-tag }}|g" k8s/student-service.yaml
+        echo "🚀 Fazendo deploy da aplicação no AKS..."
         
-        # Aplicar o deployment atualizado
-        kubectl apply -f k8s/student-service.yaml
-        kubectl apply -f k8s/ingress.yaml
+        # Verificar se service já existe, se não, criar uma única vez
+        if ! kubectl get service ${{ env.DEPLOYMENT_NAME }} -n ${{ env.NAMESPACE }} >/dev/null 2>&1; then
+          echo "📡 Service não existe, criando LoadBalancer (primeira vez)..."
+          kubectl apply -f k8s/student-service.yaml
+          kubectl apply -f k8s/ingress.yaml
+        else
+          echo "📡 Service LoadBalancer já existe, preservando IP público..."
+          
+          # Aplicar apenas configs que podem ter mudado
+          kubectl apply -f k8s/ingress.yaml
+          
+          # Atualizar APENAS a imagem (não recria service)
+          echo "🔄 Atualizando imagem do deployment para: ${{ needs.build-and-push.outputs.image-tag }}"
+          kubectl set image deployment/${{ env.DEPLOYMENT_NAME }} \
+            ${{ env.DEPLOYMENT_NAME }}=${{ needs.build-and-push.outputs.image-tag }} \
+            -n ${{ env.NAMESPACE }}
+        fi
         
     # Aguardar deployment estar pronto
     - name: ⏳ Wait for Deployment
