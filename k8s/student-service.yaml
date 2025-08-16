@@ -104,7 +104,7 @@ spec:
   - port: 80
     targetPort: 8080
     name: http
-  type: ClusterIP
+  type: LoadBalancer
 
 # HPA removido - sem auto-scaling configurado
 
